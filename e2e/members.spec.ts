@@ -84,7 +84,15 @@ test('backlog assignment, independent views, scheduling, reveal, return and list
   await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await expect(page.getByRole('button', { name: 'לפי אנשים', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.setViewportSize({ width: 650, height: 900 }); await page.screenshot({ path: 'test-results/members-backlog-narrow.png', fullPage: true });
   await page.getByRole('button', { name: 'רשימה אחת', exact: true }).click(); await expect(page.getByTestId('backlog-row-' + item.id)).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'רשימה אחת', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => (await planning(page)).preferences.backlog.mode).toBe('list');
   await saved(page); await page.reload(); await saved(page); await expect(page.getByRole('button', { name: 'רשימה אחת', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const row = page.getByTestId('backlog-row-' + item.id);
+  await row.getByLabel('צוות לפריט ' + item.title).selectOption({ label: 'ללא צוות' }); await saved(page);
+  await expect(row.getByLabel('אחראי למשימה ' + item.title)).toBeDisabled();
+  expect((await planning(page)).document.tasks.find((t: any) => t.id === item.id)).toEqual({ ...returned, teamId: null, assigneeId: null });
+  await page.getByRole('button', { name: 'לפי אנשים', exact: true }).click();
+  await expect(page.locator('.backlog-group').filter({ has: row })).toContainText('ללא צוות');
 });
 test('move and delete confirmations count both pages, cancel is unchanged, Undo restores bulk cleanup and team deletion is blocked', async ({ page }) => {
   const member = await addPerson(page, 'מיכל'); await page.getByLabel('אחראי למשימה מימוש השירותים').selectOption(member.id); await saved(page);

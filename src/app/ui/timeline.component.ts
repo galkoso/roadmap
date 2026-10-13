@@ -11,7 +11,7 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
 @Component({
   selector: 'app-timeline', standalone: true, imports: [AssigneeFieldComponent], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="timeline-caption"><span>{{ periodLabel() }}</span><span class="legend"><i></i> עבודה כוללת <b></b> סוף שבוע <span class="today-dot"></span> היום</span></div>
+    <div class="timeline-caption"><span>{{ periodLabel() }}</span><span class="legend"><i></i> משימה <b></b> סוף שבוע <span class="today-dot"></span> היום</span></div>
     <div #viewport class="timeline-viewport" (scroll)="onScroll()" aria-label="ציר הזמן; תאריכים מתקדמים משמאל לימין" tabindex="0">
       <div class="timeline-canvas" [style.width.px]="width() + namesWidth()">
         <div class="timeline-header">
@@ -19,7 +19,7 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
             <div class="month-band">@for (month of months(); track month.start) { <div [style.left.px]="x(month.start)" [style.width.px]="month.width">{{ month.label }}</div> }</div>
             <div class="day-band">@for (tick of ticks(); track tick.date) { <div [style.left.px]="x(tick.date)" [style.width.px]="tick.width" [class.weekend]="!working(tick.date)"><span>{{ tick.label }}</span></div> }</div>
           </div>
-          <div class="names-header" [style.width.px]="namesWidth()">צוותים, עבודות ומשימות <small>{{ scheduledTasks().length }} משימות</small></div>
+          <div class="names-header" [style.width.px]="namesWidth()">צוותים, כותרות ומשימות <small>{{ scheduledTasks().length }} משימות</small></div>
         </div>
         <div class="rows-area" [style.--day-width]="store.preferences().dayWidth + 'px'">
           <div class="calendar-background" [style.width.px]="width()" [style.background-image]="background()"></div>
@@ -46,7 +46,7 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
                   <button class="hierarchy person-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><span class="initial-avatar" aria-hidden="true">{{ row.initial ?? '–' }}</span><span class="name-text">{{ row.personName }}</span><small>{{ row.count }} משימות{{ row.count === 0 ? ' · אין משימות בציר' : '' }}</small></button>
                 } @else if (row.kind === 'work') {
                   <button class="hierarchy work-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><span class="name-text">{{ row.work!.title }}</span>@if (row.shared) { <span class="shared" title="עבודה משותפת">משותפת</span> }</button>
-                  @if (!row.independent) { <div class="row-actions"><button class="row-action" aria-label="עריכת עבודה" (click)="editWork.emit(row.work!.id)">⋯</button><button class="row-action delete-action" [attr.aria-label]="'מחיקת עבודה ' + row.work!.title" title="מחיקת עבודה" (click)="deleteWork.emit(row.work!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div> }
+                  @if (!row.independent) { <div class="row-actions"><button class="row-action" [attr.aria-label]="'הוספת משימה תחת ' + row.work!.title" (click)="addTask.emit(row.work!.id)">＋</button><button class="row-action" aria-label="עריכת כותרת" (click)="editWork.emit(row.work!.id)">⋯</button><button class="row-action delete-action" [attr.aria-label]="'מחיקת עבודה ' + row.work!.title" title="מחיקת עבודה" (click)="deleteWork.emit(row.work!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div> }
                 } @else {
                   <button class="task-name" (click)="selectTask.emit(row.task!.id)"><i [style.background]="row.task!.color"></i><span class="name-text">{{ row.task!.title }}<small>{{ status[row.task!.status] }}@if (store.preferences().grouping === 'people') { · {{ row.work?.title ?? 'משימה עצמאית' }} }</small></span></button>
                   <app-assignee-field [task]="row.task!" (changed)="store.assign(row.task!.id, $event)"/><div class="row-actions"><button class="row-action" [attr.aria-label]="'פעולות משימה ' + row.task!.title" [attr.popovertarget]="'task-menu-' + row.task!.id" (click)="positionTaskMenu($event)">⋯</button>
@@ -73,7 +73,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   private readonly changeDetector = inject(ChangeDetectorRef);
   readonly selected = input<string | null>(null);
   readonly moveToBacklog = output<string>(); readonly deleteTask = output<string>(); readonly deleteWork = output<string>();
-  readonly selectTask = output<string>(); readonly editWork = output<string>(); readonly editTeam = output<string>();
+  readonly addTask = output<string>(); readonly selectTask = output<string>(); readonly editWork = output<string>(); readonly editTeam = output<string>();
   @ViewChild('viewport') viewport!: ElementRef<HTMLDivElement>;
   readonly taskMenuPosition = signal({ top: 0, left: 0 });
   positionTaskMenu(event: MouseEvent): void {
@@ -131,9 +131,9 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
       if (collapsed.has(groupKey)) continue;
       for (const work of [...doc.workItems].sort((a, b) => a.order - b.order)) {
         const all = workTasks.get(work.id) ?? [], tasks = all.filter(owns).sort((a, b) => a.order - b.order);
-        if (!tasks.length && (populatedWorks.has(work.id) || team.unassigned || team.id !== teams[0].id)) continue;
-        const key = 'work:' + work.id + ':' + team.id, range = workRange(doc, work.id);
-        result.push({ key, kind: 'work', team, work, start: range?.startDate, end: range?.endDate, shared: new Set(all.map(t => t.teamId)).size > 1 });
+        if (work.teamId !== undefined ? work.teamId !== team.id : !tasks.length && (populatedWorks.has(work.id) || team.unassigned || team.id !== teams[0].id)) continue;
+        const key = 'work:' + work.id + ':' + team.id;
+        result.push({ key, kind: 'work', team, work, shared: new Set(all.map(t => t.teamId)).size > 1 });
         if (!collapsed.has(key)) for (const task of tasks) result.push({ key: task.id, kind: 'task', team, work, task, start: task.startDate, end: task.endDate });
       }
       const independent = scheduled.filter(t => owns(t) && t.workItemId === null).sort((a, b) => a.order - b.order);

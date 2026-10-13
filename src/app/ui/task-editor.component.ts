@@ -16,7 +16,7 @@ import { editTask, returnToBacklog, setIncoming } from '../core/scheduler';
           <div class="field-grid"><label>צוות אחראי<select aria-label="צוות אחראי" name="team" [ngModel]="draft.teamId" (ngModelChange)="changeTeam($event)"><option [ngValue]="null">ללא צוות</option>@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
           <app-assignee-field [task]="draft" (changed)="draft.assigneeId = $event"/>
           @if (assignmentMessage) { <p class="field-hint" role="status">{{ assignmentMessage }}</p> }
-          <label>עבודה קשורה<select aria-label="עבודה קשורה" name="work" [(ngModel)]="draft.workItemId"><option [ngValue]="null">פריט עצמאי</option>@for (work of store.document().workItems; track work.id) { <option [value]="work.id">{{ work.title }}</option> }</select></label><label>סטטוס<select aria-label="סטטוס" name="status" [(ngModel)]="draft.status"><option value="planned">מתוכננת</option><option value="in_progress">בביצוע</option><option value="completed">הושלמה</option></select></label>
+          <label>כותרת<select aria-label="כותרת" name="work" [(ngModel)]="draft.workItemId"><option [ngValue]="null">ללא כותרת</option>@for (work of availableHeadings(); track work.id) { <option [value]="work.id">{{ work.title }}</option> }</select></label><label>סטטוס<select aria-label="סטטוס" name="status" [(ngModel)]="draft.status"><option value="planned">מתוכננת</option><option value="in_progress">בביצוע</option><option value="completed">הושלמה</option></select></label>
           @if (!saveAsBacklog) { <label>תאריך התחלה<input type="date" name="start" [(ngModel)]="draft.startDate" (ngModelChange)="checkDates()" dir="ltr"></label>
           <label>תאריך סיום<input type="date" name="end" [(ngModel)]="draft.endDate" (ngModelChange)="checkDates()" dir="ltr"></label> }</div>
           @if (saveAsBacklog) { <p class="field-hint">המשימה תישמר בבקלוג ללא תאריכים ולא תופיע בציר הזמן עד לשיבוץ.</p> } @else if (dateError) { <p class="field-error" role="alert">{{ dateError }}</p> } @else { <p class="field-hint">{{ length() }} ימי עבודה · ראשון–חמישי · הסיום כולל</p> }
@@ -49,12 +49,13 @@ export class TaskEditorComponent {
       // Read data once per selection; committed changes elsewhere never overwrite a partially edited form.
       const doc = this.store.document();
       if (this.draft && this.draft.id === id && !isNew) return;
-      if (isNew && workId && this.draft?.workItemId === workId && !this.original) return;
-      const task = isNew && workId ? { assigneeId: null, planningState: 'scheduled' as const, id: uid(), workItemId: workId, teamId: doc.teams[0].id, title: '', startDate: nextWorkingDay(today()), endDate: nextWorkingDay(today()), color: palette[0], status: 'planned' as const, notes: '', order: doc.tasks.length } : doc.tasks.filter(isScheduled).find(t => t.id === id);
+      if (isNew && workId && this.draft?.workItemId === (workId === '__standalone__' ? null : workId) && !this.original) return;
+      const task = isNew && workId ? { assigneeId: null, planningState: 'scheduled' as const, id: uid(), workItemId: workId === '__standalone__' ? null : workId, teamId: doc.workItems.find(w => w.id === workId)?.teamId ?? doc.teams[0].id, title: '', startDate: nextWorkingDay(today()), endDate: nextWorkingDay(today()), color: palette[0], status: 'planned' as const, notes: '', order: doc.tasks.length } : doc.tasks.filter(isScheduled).find(t => t.id === id);
       this.draft = task ? clone(task) : null; this.original = isNew ? null : this.draft ? clone(this.draft) : null;
       this.incoming = clone(doc.dependencies.filter(d => d.successorId === id)); this.originalIncoming = clone(this.incoming); this.error = ''; this.assignmentMessage = ''; this.saveAsBacklog = false; this.backlogWorkingDays = 5; this.checkDates();
     });
   }
+  availableHeadings() { return this.store.document().workItems.filter(w => w.teamId === undefined || w.teamId === this.draft?.teamId); }
   candidates(): Task[] { return this.store.document().tasks.filter(t => !!this.draft?.workItemId && t.workItemId === this.draft.workItemId && t.id !== this.draft?.id); }
   teamName(id: string | null): string { return this.store.document().teams.find(t => t.id === id)?.name ?? 'ללא צוות'; }
   candidateDate(task: Task): string { return isScheduled(task) ? 'סיום ' + formatDate(task.endDate) : 'בבקלוג · טרם שובצה'; }
@@ -86,7 +87,11 @@ export class TaskEditorComponent {
           if (this.draft[key] !== this.original?.[key]) Object.assign(patch, { [key]: this.draft[key] });
         }
         if ('startDate' in patch || 'endDate' in patch || 'workItemId' in patch) doc = editTask(doc, this.draft.id, patch);
-        else Object.assign(current, patch);
+        else {
+          if (patch.teamId !== undefined && changeTaskTeam(doc, current, patch.teamId))
+            this.assignmentMessage = 'האחראי הוסר כי אינו שייך לצוות החדש';
+          Object.assign(current, patch);
+        }
       }
       const incoming = this.incoming.map(d => { const old = this.originalIncoming.find(o => o.id === d.id), scheduled = doc.dependencies.find(o => o.id === d.id); return old && scheduled && old.lagWorkingDays === d.lagWorkingDays ? { ...d, lagWorkingDays: scheduled.lagWorkingDays } : d; });
       if (JSON.stringify(incoming) !== JSON.stringify(doc.dependencies.filter(d => d.successorId === this.draft!.id)))
@@ -96,7 +101,7 @@ export class TaskEditorComponent {
       const actual = doc.tasks.find(t => t.id === this.draft!.id)!;
       if (!isScheduled(actual)) { this.store.commit(doc, 'המשימה נוספה לבקלוג'); this.close.emit(); return; }
       const snapped = actual.startDate !== this.draft.startDate;
-      this.store.commit(doc, `המשימה נשמרה${snapped ? ' · הוצמדה למועד חוקי: ' + formatDate(actual.startDate) : ''}${changed.length ? ' · עודכנו: ' + changed.join(', ') : ''}`); this.close.emit();
+      this.store.commit(doc, `המשימה נשמרה${this.assignmentMessage ? ' · ' + this.assignmentMessage : ''}${snapped ? ' · הוצמדה למועד חוקי: ' + formatDate(actual.startDate) : ''}${changed.length ? ' · עודכנו: ' + changed.join(', ') : ''}`); this.close.emit();
     } catch (error) { this.error = (error as Error).message; }
   }
   toBacklog(): void {

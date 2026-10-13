@@ -7,7 +7,7 @@ const text = (value: unknown): value is string => typeof value === 'string';
 const order = (value: unknown): boolean => Number.isSafeInteger(value) && Number(value) >= 0;
 export function validateDocument(value: unknown): RoadmapDocument {
   assert(record(value));
-  assert(([1, 2, SCHEMA_VERSION].includes(Number(value['schemaVersion']))), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1, 2 ו־3');
+  assert([1, 2, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1, 2 ו־3');
   if (value['schemaVersion'] === 1) {
     assert(Array.isArray(value['tasks']));
     for (const task of value['tasks']) assert(record(task) && text(task['teamId']) && text(task['workItemId']) && text(task['startDate']) && text(task['endDate']) && task['planningState'] === undefined, 'נתונים ישנים אינם תקינים; לא שונו ולא נמחקו');
@@ -40,7 +40,12 @@ export function validateDocument(value: unknown): RoadmapDocument {
     assert(text(member.name) && member.name.trim() && order(member.order), 'שם איש צוות אינו תקין');
     assert(doc.teams.some(team => team.id === member.teamId), 'איש צוות מפנה לצוות שאינו קיים');
   }
-  for (const w of doc.workItems) assert(text(w.title) && w.title.trim() && order(w.order));
+  for (const w of doc.workItems) {
+    assert(text(w.title) && w.title.trim() && order(w.order));
+    assert(w.teamId === undefined || doc.teams.some(team => team.id === w.teamId), 'צוות הכותרת אינו קיים');
+    const raw = w as unknown as Record<string, unknown>;
+    assert(raw['startDate'] === undefined && raw['endDate'] === undefined && raw['estimatedWorkingDays'] === undefined, 'כותרת אינה יכולה להכיל תאריכים או ימי עבודה');
+  }
   for (const t of doc.tasks) {
     assert(text(t.title) && t.title.trim() && text(t.notes) && order(t.order));
     assert(t.estimatedWorkingDays === undefined || (Number.isSafeInteger(t.estimatedWorkingDays) && t.estimatedWorkingDays >= 1 && t.estimatedWorkingDays <= 10000), 'משך משוער חייב להיות מספר שלם בין 1 ל־10,000 ימי עבודה');
@@ -48,7 +53,7 @@ export function validateDocument(value: unknown): RoadmapDocument {
     assert(['planned', 'in_progress', 'completed'].includes(t.status), 'סטטוס אינו תקין');
     assert(t.teamId === null || doc.teams.some(team => team.id === t.teamId), 'שיוך צוות אינו תקין');
     assert(t.assigneeId === undefined || t.assigneeId === null || (text(t.assigneeId) && t.teamId !== null && doc.members.some(m => m.id === t.assigneeId && m.teamId === t.teamId)), 'אחראי אינו קיים או אינו שייך לצוות המשימה');
-    assert(t.workItemId === null || doc.workItems.some(w => w.id === t.workItemId), 'שיוך עבודה אינו תקין');
+    assert(t.workItemId === null || doc.workItems.some(w => w.id === t.workItemId && (w.teamId === undefined || w.teamId === t.teamId)), 'הכותרת אינה שייכת לצוות המשימה');
     assert(t.planningState === 'scheduled' || t.planningState === 'backlog', 'מצב תכנון אינו תקין');
     if (isScheduled(t)) { assert(text(t.startDate) && text(t.endDate)); validateRange(t.startDate, t.endDate); }
     else assert(t.startDate === undefined && t.endDate === undefined, 'פריט בקלוג אינו יכול להכיל תאריכי דמה');
@@ -88,7 +93,7 @@ export function validatePreferences(value: unknown): ViewPreferences {
 export function parseBackup(raw: string): Backup {
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new Error('הקובץ אינו JSON תקין'); }
-  assert(record(value)); assert(([1, 2, SCHEMA_VERSION].includes(Number(value['schemaVersion']))), 'גרסת הגיבוי אינה נתמכת');
+  assert(record(value)); assert([1, 2, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת');
   assert(record(value['document']) && value['document']['schemaVersion'] === value['schemaVersion'], 'גרסת המסמך אינה תואמת לגרסת הגיבוי');
   assert(text(value['exportedAt']) && Number.isFinite(Date.parse(value['exportedAt'])));
   return { schemaVersion: SCHEMA_VERSION, exportedAt: value['exportedAt'], document: validateDocument(value['document']), preferences: validatePreferences(value['preferences']) };

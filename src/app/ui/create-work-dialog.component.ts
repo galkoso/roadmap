@@ -1,79 +1,57 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, inject, output, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RoadmapStore } from '../core/store';
-import { clone, palette, uid } from '../core/model';
-import { addWorkingDays, formatDate, nextWorkingDay, today, validateRange } from '../core/dates';
+import { clone, uid } from '../core/model';
 @Component({
   selector: 'app-create-work-dialog', standalone: true, imports: [FormsModule], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <dialog #dialog class="create-work-dialog" aria-labelledby="create-work-heading" (close)="onClosed()">
       @if (opened()) {
-      <div class="panel-heading"><div><span class="eyebrow">הוספה למפת הדרכים</span><h2 id="create-work-heading">עבודה חדשה</h2></div><button type="button" class="icon-button" aria-label="סגירת יצירת עבודה" (click)="close()">×</button></div>
-      <form (ngSubmit)="save()" novalidate>
-        <label>כותרת העבודה<input name="create-work-title" [(ngModel)]="title" required maxlength="200" autofocus placeholder="מה מתכננים לעשות?"></label>
-        <label class="check-label schedule-toggle"><input type="checkbox" name="create-in-backlog" [(ngModel)]="backlog" (ngModelChange)="resetErrors()">הוספה לבקלוג</label>
-        @if (!backlog) { <label class="check-label schedule-toggle"><input type="checkbox" name="scheduled" [(ngModel)]="scheduled" (ngModelChange)="resetErrors()">להגדיר תקופה לעבודה</label> }
-        @if (scheduled && !backlog) {
-          <label>צוות אחראי<select name="create-work-team" [(ngModel)]="teamId" aria-label="צוות אחראי">@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
-          <div class="field-grid"><label>תאריך התחלה<input type="date" name="create-work-start" [(ngModel)]="startDate" (ngModelChange)="checkSchedule()" dir="ltr" required></label>
-            <label>מספר ימי עבודה<input type="number" name="create-work-days" [(ngModel)]="workingDays" (ngModelChange)="checkSchedule()" min="1" max="10000" step="1" dir="ltr" required></label></div>
-          @if (scheduleError) { <p class="field-error" role="alert">{{ scheduleError }}</p> } @else { <div class="schedule-summary"><span>תאריך סיום מחושב</span><strong dir="ltr">{{ endLabel() }}</strong><small>ראשון–חמישי · כולל יום ההתחלה והסיום</small></div> }
-          <p class="field-hint">תיווצר משימה ראשונה לתקופה זו בצוות שנבחר. אפשר לערוך אותה ולהוסיף משימות בהמשך.</p>
-        } @else if (backlog) {
-          <label>צוות אחראי<select name="backlog-team" [(ngModel)]="teamId" aria-label="צוות אחראי"><option value="">ללא צוות</option>@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
-          <label>משך משוער בימי עבודה<input type="number" name="create-backlog-days" [(ngModel)]="workingDays" min="1" max="10000" step="1" dir="ltr" required></label>
-          <p class="field-hint">תיווצר משימה בבקלוג, ללא תאריכים. העבודה לא תופיע בציר הזמן עד לשיבוץ משימה.</p>
-        } @else { <p class="field-hint">העבודה תתווסף ללא פס זמן. אפשר להוסיף לה משימות בהמשך.</p> }
-        @if (error) { <p class="field-error" role="alert">{{ error }}</p> }
-        <div class="form-actions dialog-actions"><button class="primary" type="submit" [disabled]="store.importing() || !store.loaded()">שמירת עבודה</button><button type="button" (click)="close()">ביטול</button></div>
-      </form>
+        <div class="panel-heading"><div><span class="eyebrow">קבוצת משימות תחת צוות</span><h2 id="create-work-heading">{{ editingId ? 'עריכת כותרת' : 'כותרת חדשה' }}</h2></div><button type="button" class="icon-button" aria-label="סגירת עריכת כותרת" (click)="close()">×</button></div>
+        <form (ngSubmit)="save()" novalidate>
+          <label>שם הכותרת<input name="heading-title" [(ngModel)]="title" required maxlength="200" autofocus></label>
+          <label>צוות<select name="heading-team" [(ngModel)]="teamId" aria-label="צוות הכותרת" [disabled]="!!editingId">@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
+          <p class="field-hint">כותרת מארגנת משימות בלבד, ללא תאריכים או ימי עבודה. היא מופיעה בבקלוג ובמפת הדרכים.</p>
+          @if (error) { <p class="field-error" role="alert">{{ error }}</p> }
+          <div class="form-actions dialog-actions"><button class="primary" type="submit" [disabled]="store.importing() || !store.loaded()">שמירת כותרת</button><button type="button" (click)="close()">ביטול</button>@if (editingId) { <button type="button" class="danger text-button" (click)="remove()">מחיקת כותרת</button> }</div>
+        </form>
       }
     </dialog>
   `
 })
 export class CreateWorkDialogComponent {
   readonly store = inject(RoadmapStore); private readonly changeDetector = inject(ChangeDetectorRef);
-  readonly opened = signal(false);
-  readonly created = output<{ id: string; startDate?: string }>();
+  readonly opened = signal(false); readonly created = output<{ id: string; startDate?: string }>();
   @ViewChild('dialog', { static: true }) dialog!: ElementRef<HTMLDialogElement>;
-  title = ''; teamId = ''; startDate = nextWorkingDay(today()); workingDays: number | null = 5; scheduled = true; backlog = false;
-  error = ''; scheduleError = '';
-  open(): void {
-    this.title = ''; this.teamId = [...this.store.document().teams].sort((a, b) => a.order - b.order)[0]?.id ?? '';
-    this.startDate = nextWorkingDay(today()); this.workingDays = 5; this.scheduled = true; this.backlog = false; this.resetErrors();
-    this.opened.set(true); this.changeDetector.detectChanges(); this.dialog.nativeElement.showModal();
+  title = ''; teamId = ''; editingId: string | null = null; error = '';
+  open(teamId?: string, id?: string): void {
+    const heading = this.store.document().workItems.find(w => w.id === id);
+    this.editingId = heading?.id ?? null; this.title = heading?.title ?? '';
+    this.teamId = heading?.teamId ?? teamId ?? [...this.store.document().teams].sort((a, b) => a.order - b.order)[0]?.id ?? '';
+    this.error = ''; this.opened.set(true); this.changeDetector.detectChanges(); this.dialog.nativeElement.showModal();
   }
   close(): void { this.dialog.nativeElement.close(); this.opened.set(false); }
-  onClosed(): void { this.opened.set(false); this.resetErrors(); }
-  resetErrors(): void { this.error = ''; this.scheduleError = ''; }
-  private endDate(): string {
-    validateRange(this.startDate, this.startDate);
-    if (!Number.isSafeInteger(this.workingDays) || Number(this.workingDays) < 1 || Number(this.workingDays) > 10000) {
-      throw new Error('יש להזין מספר שלם של ימי עבודה, בין 1 ל־10,000');
-    }
-    const end = addWorkingDays(this.startDate, Number(this.workingDays) - 1); validateRange(this.startDate, end); return end;
-  }
-  endLabel(): string { try { return formatDate(this.endDate()); } catch { return '—'; } }
-  checkSchedule(): void { this.scheduleError = ''; try { this.endDate(); } catch (error) { this.scheduleError = (error as Error).message; } }
+  onClosed(): void { this.opened.set(false); this.error = ''; }
   save(): void {
-    this.error = ''; if (!this.title.trim()) { this.error = 'יש להזין כותרת עבודה'; return; }
+    this.error = ''; if (!this.title.trim()) { this.error = 'יש להזין שם כותרת'; return; }
     if (!this.store.loaded() || this.store.importing()) return;
-    if (this.backlog && (!Number.isSafeInteger(this.workingDays) || Number(this.workingDays) < 1 || Number(this.workingDays) > 10000)) { this.error = 'משך משוער חייב להיות מספר שלם בין 1 ל־10,000 ימי עבודה'; return; }
-    if (this.scheduled && !this.backlog) { this.checkSchedule(); if (this.scheduleError) return; }
     try {
-      const doc = clone(this.store.document()), id = uid(), title = this.title.trim();
-      if (((this.scheduled && !this.backlog) || (this.backlog && this.teamId)) && !doc.teams.some(t => t.id === this.teamId)) throw new Error('יש לבחור צוות אחראי');
-      doc.workItems.push({ id, title, order: Math.max(-1, ...doc.workItems.map(w => w.order)) + 1 });
-      if (this.backlog) doc.tasks.push({
-        assigneeId: null, planningState: 'backlog', estimatedWorkingDays: Number(this.workingDays), id: uid(), workItemId: id, teamId: this.teamId || null, title,
-        color: palette[0], status: 'planned', notes: '', order: 0
-      });
-      else if (this.scheduled) doc.tasks.push({
-        assigneeId: null, planningState: 'scheduled', id: uid(), workItemId: id, teamId: this.teamId, title, startDate: this.startDate, endDate: this.endDate(),
-        color: palette[0], status: 'planned', notes: '', order: 0
-      });
-      this.store.commit(doc, this.backlog ? 'העבודה והמשימה נוספו לבקלוג' : this.scheduled ? `העבודה נוצרה · ${this.workingDays} ימי עבודה · סיום ${this.endLabel()}` : 'העבודה נוספה ללא משימות');
-      this.close(); this.created.emit({ id, startDate: this.scheduled && !this.backlog ? this.startDate : undefined });
+      const doc = clone(this.store.document()), id = this.editingId ?? uid();
+      if (!doc.teams.some(t => t.id === this.teamId)) throw new Error('יש לבחור צוות');
+      if (this.editingId) {
+        const heading = doc.workItems.find(w => w.id === id); if (!heading) throw new Error('הכותרת כבר נמחקה');
+        heading.title = this.title.trim();
+      } else doc.workItems.push({ id, title: this.title.trim(), teamId: this.teamId, order: Math.max(-1, ...doc.workItems.map(w => w.order)) + 1 });
+      this.store.commit(doc, 'הכותרת נשמרה'); this.close(); this.created.emit({ id });
     } catch (error) { this.error = (error as Error).message; }
+  }
+  remove(): void {
+    if (!this.editingId || !confirm('למחוק את הכותרת? המשימות יישארו תחת הצוות ללא כותרת. קשרי התלות שלהן יוסרו.')) return;
+    const doc = clone(this.store.document());
+    const ids = new Set(doc.tasks.filter(t => t.workItemId === this.editingId).map(t => t.id));
+    for (const task of doc.tasks) if (ids.has(task.id)) task.workItemId = null;
+    doc.dependencies = doc.dependencies.filter(d => !ids.has(d.predecessorId) && !ids.has(d.successorId));
+    doc.workItems = doc.workItems.filter(w => w.id !== this.editingId);
+    this.store.commit(doc, 'הכותרת נמחקה; המשימות נשמרו'); this.close();
   }
 }

@@ -20,6 +20,8 @@ export function assignTask(document: RoadmapDocument, taskId: string, assigneeId
 export function changeTaskTeam(doc: RoadmapDocument, task: Task, teamId: string | null): boolean {
   if (teamId !== null && !doc.teams.some(t => t.id === teamId)) throw new Error('הצוות אינו קיים');
   task.teamId = teamId;
+  const heading = doc.workItems.find(w => w.id === task.workItemId);
+  if (heading?.teamId !== undefined && heading.teamId !== teamId) task.workItemId = null;
   const reset = !!task.assigneeId && !doc.members.some(m => m.id === task.assigneeId && m.teamId === teamId);
   if (reset) task.assigneeId = null;
   return reset;

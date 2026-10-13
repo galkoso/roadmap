@@ -125,3 +125,9 @@
 Added optional `estimatedWorkingDays`. All backlog creation/edit paths accept 1-10,000 working days, display the estimate in the list and prefill scheduling. Returning to backlog captures the current inclusive working duration, including resized tasks. Older records without an estimate remain valid and display an unset duration.
 
 Final verification on the latest shared-workspace schema: production build, TypeScript check, 32 unit/integration tests and 33 Chromium tests passed. Tests cover invalid estimates, older records, backups, duration after resizing, all creation paths, editing, Undo/Redo, refresh, scheduling defaults and return to backlog. Schema assertions use `SCHEMA_VERSION` to preserve concurrent schema updates.
+
+### הפרדה בין כותרות למשימות — 2026-10-13
+
+יצירת כותרת היא פעולה נפרדת מיצירת משימה. כותרות חדשות נשמרות כ־workItems עם teamId, ללא תאריכים או ימי עבודה, ומופיעות תחת אותו צוות גם בבקלוג וגם ב־Roadmap כשהן ריקות. שורות הכותרות מוצגות ללא פס זמן. אפשר להוסיף משימה תחת הכותרת ולשייך משימות קיימות לכותרות של הצוות שלהן. עבודות משותפות קיימות נשמרות לתאימות, כולל המזהים והתלויות שלהן.
+
+אימות: בניית production ובדיקת TypeScript עברו; 54 בדיקות יחידה ואינטגרציה עברו. שתי בדיקות Chromium ממוקדות עברו בפורט 4202: יצירת כותרת בשני המסכים, שיוך צוות, היעדר תאריכים ומשך בכותרת, הוספת משימות, סינון לפי צוות, שיבוץ, רענון, עריכה, מחיקה ו־Undo. נבדקו גם צילומי המסכים `test-results/headings-roadmap.png` ו־`test-results/headings-backlog.png`. חבילת בדיקות ה־e2e הוותיקה במלואה לא הורצה; חלק ממנה מתאר את תהליך יצירת העבודה עם תקופה, שהוחלף בעקבות הדרישה החדשה.

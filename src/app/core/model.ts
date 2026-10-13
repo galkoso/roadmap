@@ -1,7 +1,7 @@
 export type TaskStatus = 'planned' | 'in_progress' | 'completed';
 export interface Team { id: string; name: string; order: number }
 export interface TeamMember { id: string; teamId: string; name: string; order: number }
-export interface WorkItem { id: string; title: string; order: number }
+export interface WorkItem { id: string; title: string; order: number; teamId?: string }
 interface TaskBase {
   id: string; workItemId: string | null; teamId: string | null; title: string;
   assigneeId?: string | null; color: string; status: TaskStatus; notes: string; order: number; estimatedWorkingDays?: number;

@@ -110,6 +110,11 @@ describe('people projection and persistence', () => {
     finally { put.mockRestore(); }
     expect(await db.load()).toEqual(before);
   });
+  it('rejects a non-numeric schema version even if it looks like a supported version', () => {
+    const doc = { ...fixture(), schemaVersion: String(SCHEMA_VERSION) };
+    expect(() => validateDocument(doc)).toThrow(/גרסת/);
+    expect(() => parseBackup(JSON.stringify({ schemaVersion: String(SCHEMA_VERSION), document: doc, exportedAt: new Date().toISOString(), preferences: initialPreferences() }))).toThrow(/גרסת/);
+  });
   it('validates grouping preferences and expansion arrays', () => {
     expect(() => validatePreferences({ ...initialPreferences(), grouping: 'wrong' })).toThrow();
     expect(() => validatePreferences({ ...initialPreferences(), backlog: { mode: 'people', collapsed: [], peopleCollapsed: [4], scrollTop: 0 } })).toThrow();

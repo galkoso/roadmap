@@ -222,12 +222,12 @@ test('backlog estimates validate, persist, survive backup and Undo, and prefill 
   await editor.getByLabel('משך משוער בימי עבודה').fill('7'); await editor.getByRole('button', { name: 'שמירת פריט' }).click(); await saved(page);
   const item = (await planning(page)).document.tasks.find((t: any) => t.title === 'משימה עם הערכת משך');
   expect(item.estimatedWorkingDays).toBe(7); expect(item.startDate).toBeUndefined();
-  const row = page.getByTestId('backlog-row-' + item.id); await expect(row.locator('.backlog-duration')).toHaveText('7 ימי עבודה');
+  const row = page.getByTestId('backlog-row-' + item.id); await expect(row.getByRole('spinbutton')).toHaveValue('7');
   await row.getByRole('button', { name: 'משימה עם הערכת משך מתוכננת', exact: true }).click();
   await editor.getByLabel('משך משוער בימי עבודה').fill('3'); await editor.getByRole('button', { name: 'שמירת פריט' }).click(); await saved(page);
-  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click(); await saved(page); await expect(row.locator('.backlog-duration')).toHaveText('7 ימי עבודה');
-  await page.getByRole('button', { name: 'החזרת שינוי', exact: true }).click(); await saved(page); await expect(row.locator('.backlog-duration')).toHaveText('3 ימי עבודה');
-  await page.reload(); await saved(page); await expect(row.locator('.backlog-duration')).toHaveText('3 ימי עבודה');
+  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click(); await saved(page); await expect(row.getByRole('spinbutton')).toHaveValue('7');
+  await page.getByRole('button', { name: 'החזרת שינוי', exact: true }).click(); await saved(page); await expect(row.getByRole('spinbutton')).toHaveValue('3');
+  await page.reload(); await saved(page); await expect(row.getByRole('spinbutton')).toHaveValue('3');
   await row.getByRole('button', { name: 'שיבוץ בזמן' }).click();
   const scheduleDialog = page.getByRole('dialog', { name: 'שיבוץ בזמן', exact: true });
   await expect(scheduleDialog.getByLabel('מספר ימי עבודה')).toHaveValue('3');
@@ -237,5 +237,37 @@ test('backlog estimates validate, persist, survive backup and Undo, and prefill 
   await page.getByRole('button', { name: 'הצג בציר הזמן' }).click();
   await page.getByRole('button', { name: 'פעולות משימה משימה עם הערכת משך', exact: true }).click();
   page.once('dialog', dialog => dialog.accept()); await page.locator('[popover]:popover-open').getByRole('button', { name: 'העברה לבקלוג' }).click(); await saved(page);
-  await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await expect(row.locator('.backlog-duration')).toHaveText('3 ימי עבודה');
+  await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await expect(row.getByRole('spinbutton')).toHaveValue('3');
+});
+
+
+test('quick duration edits update team totals across views, validate and persist with Undo', async ({ page }) => {
+  const first = await create(page, 'משך מהיר ראשון', { team: 'צוות א׳' });
+  const second = await create(page, 'משך מהיר שני', { team: 'צוות א׳' });
+  const row = page.getByTestId('backlog-row-' + first.id), duration = row.getByRole('spinbutton');
+  const heading = page.locator('[data-group="team:team-a"] > .backlog-group-heading');
+  await expect(heading).toContainText('10 ימי עבודה');
+  await duration.fill('8'); await duration.press('Enter'); await saved(page);
+  await expect(heading).toContainText('13 ימי עבודה');
+  await duration.fill('0'); await duration.press('Tab');
+  await expect(row.getByRole('alert')).toContainText('מספר שלם'); await expect(duration).toHaveValue('8');
+  expect((await planning(page)).document.tasks.find((t: any) => t.id === first.id).estimatedWorkingDays).toBe(8);
+  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click();
+  await expect(duration).toHaveValue('5'); await expect(heading).toContainText('10 ימי עבודה');
+  await page.getByRole('button', { name: 'החזרת שינוי', exact: true }).click();
+  await expect(heading).toContainText('13 ימי עבודה');
+  await page.getByRole('button', { name: 'לפי אנשים', exact: true }).click();
+  await expect(page.locator('.backlog-group > .backlog-group-heading').filter({ hasText: 'צוות א׳' })).toContainText('13 ימי עבודה');
+  await page.getByTestId('backlog-row-' + second.id).getByRole('combobox', { name: 'צוות לפריט ' + second.title }).selectOption({ label: 'צוות ב׳' });
+  await expect(page.locator('.backlog-group > .backlog-group-heading').filter({ hasText: 'צוות א׳' })).toContainText('8 ימי עבודה');
+  await expect(page.locator('.backlog-group > .backlog-group-heading').filter({ hasText: 'צוות ב׳' })).toContainText('5 ימי עבודה');
+  await page.getByRole('button', { name: 'רשימה אחת', exact: true }).click();
+  await duration.fill('6'); await duration.press('Tab'); await saved(page);
+  await page.reload(); await saved(page); await expect(duration).toHaveValue('6');
+  await row.getByRole('button', { name: 'שיבוץ בזמן' }).click();
+  await expect(page.getByRole('dialog').getByLabel('מספר ימי עבודה')).toHaveValue('6');
+  await page.getByRole('dialog').getByRole('button', { name: 'ביטול', exact: true }).click();
+  await page.getByRole('button', { name: 'לפי עבודות', exact: true }).click();
+  await heading.click(); await expect(heading).toContainText('6 ימי עבודה');
+  await expect(heading).toHaveAttribute('aria-expanded', 'false');
 });

@@ -139,13 +139,15 @@ export class RoadmapPageComponent {
     if (this.selected()) this.timeline?.revealGrouping(this.selected()!);
   }
   removeTeam(id: string): void {
-    const doc = clone(this.store.document()), tasks = doc.tasks.filter(t => t.teamId === id), target = this.transfer[id];
+    const doc = clone(this.store.document()), tasks = doc.tasks.filter(t => t.teamId === id), headings = doc.workItems.filter(w => w.teamId === id), target = this.transfer[id];
     if (doc.members.some(m => m.teamId === id)) { this.store.notice.set('יש להעביר או להסיר את אנשי הצוות דרך אנשי הצוותים לפני מחיקת הצוות'); return; }
     if (doc.teams.length === 1) { this.store.notice.set('חייב להישאר צוות אחד לפחות'); return; }
-    if (tasks.length && (!target || target === id)) { this.store.notice.set('בחרו צוות שאליו יועברו המשימות לפני המחיקה'); return; }
-    if (!confirm(`למחוק את הצוות? ${tasks.length} משימות יועברו לצוות שנבחר.`)) return;
+    if ((tasks.length || headings.length) && (!target || target === id)) { this.store.notice.set('בחרו צוות שאליו יועברו הכותרות והמשימות לפני המחיקה'); return; }
+    if (!confirm(`למחוק את הצוות? ${headings.length} כותרות ו־${tasks.length} משימות יועברו לצוות שנבחר.`)) return;
+    for (const heading of headings) heading.teamId = target;
     for (const task of tasks) { task.teamId = target; task.assigneeId = null; } doc.teams = doc.teams.filter(t => t.id !== id); this.store.commit(doc, 'הצוות נמחק');
   }
+  teamHeadingCount(id: string): number { return this.store.document().workItems.filter(w => w.teamId === id).length; }
   teamTaskCount(id: string): number { return this.store.document().tasks.filter(t => t.teamId === id).length; }
   navigate(direction: number): void {
     const center = this.timeline?.visibleCenter() ?? this.store.preferences().center, mode = this.store.preferences().mode;
