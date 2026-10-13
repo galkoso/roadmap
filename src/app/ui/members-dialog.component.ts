@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, inject, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RoadmapStore } from '../core/store';
 import { clone, TeamMember, uid } from '../core/model';
@@ -24,6 +24,13 @@ import { assignedCount, memberLabel, membersForTeam, removeMember, updateMember 
 export class MembersDialogComponent {
   readonly store = inject(RoadmapStore); @ViewChild('dialog', { static: true }) dialog!: ElementRef<HTMLDialogElement>;
   drafts: Record<string, { name: string; teamId: string }> = {}; name = ''; teamId = ''; error = '';
+  constructor() {
+    this.refresh();
+    effect(() => {
+      for (const member of this.store.document().members)
+        if (!this.drafts[member.id]) this.drafts[member.id] = { name: member.name, teamId: member.teamId };
+    });
+  }
   teams() { return [...this.store.document().teams].sort((a, b) => a.order - b.order); }
   members(id: string) { return membersForTeam(this.store.document(), id); }
   label(member: TeamMember) { return memberLabel(this.store.document(), member); }

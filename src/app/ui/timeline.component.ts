@@ -13,13 +13,13 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
   template: `
     <div class="timeline-caption"><span>{{ periodLabel() }}</span><span class="legend"><i></i> עבודה כוללת <b></b> סוף שבוע <span class="today-dot"></span> היום</span></div>
     <div #viewport class="timeline-viewport" (scroll)="onScroll()" aria-label="ציר הזמן; תאריכים מתקדמים משמאל לימין" tabindex="0">
-      <div class="timeline-canvas" [style.width.px]="width() + 420">
+      <div class="timeline-canvas" [style.width.px]="width() + namesWidth()">
         <div class="timeline-header">
           <div class="date-header" [style.width.px]="width()" [attr.data-range-start]="start()">
             <div class="month-band">@for (month of months(); track month.start) { <div [style.left.px]="x(month.start)" [style.width.px]="month.width">{{ month.label }}</div> }</div>
             <div class="day-band">@for (tick of ticks(); track tick.date) { <div [style.left.px]="x(tick.date)" [style.width.px]="tick.width" [class.weekend]="!working(tick.date)"><span>{{ tick.label }}</span></div> }</div>
           </div>
-          <div class="names-header">צוותים, עבודות ומשימות <small>{{ scheduledTasks().length }} משימות</small></div>
+          <div class="names-header" [style.width.px]="namesWidth()">צוותים, עבודות ומשימות <small>{{ scheduledTasks().length }} משימות</small></div>
         </div>
         <div class="rows-area" [style.--day-width]="store.preferences().dayWidth + 'px'">
           <div class="calendar-background" [style.width.px]="width()" [style.background-image]="background()"></div>
@@ -39,7 +39,7 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
                   </button>
                 }
               </div>
-              <div class="row-name" dir="rtl">
+              <div class="row-name" dir="rtl" [style.width.px]="namesWidth()">
                 @if (row.kind === 'team') {
                   <button class="hierarchy team-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><i class="team-icon">{{ row.team.name.slice(-2, -1) }}</i>{{ row.team.name }}<small>{{ teamCount(row.team.id) }}</small></button>@if (!row.team.unassigned) { <button class="row-action team-name-edit" [attr.aria-label]="'שינוי שם הצוות ' + row.team.name" title="שינוי שם הצוות" (click)="editTeam.emit(row.team.id)">✎</button> }
                 } @else if (row.kind === 'person') {
@@ -88,10 +88,11 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   private drag: Drag | null = null; private suppressClick = false; private scrollTimer?: ReturnType<typeof setTimeout>; private positioning = false;
   private readonly windowCenter = signal(today());
   private readonly viewportWidth = signal(0);
+  readonly namesWidth = computed(() => this.viewportWidth() > 0 && this.viewportWidth() < 600 ? 300 : 420);
   private resizeObserver?: ResizeObserver;
   private destroyed = false;
   readonly span = computed(() => Math.max(({ weeks: 42, months: 100, quarters: 366 })[this.store.preferences().mode],
-    Math.ceil(Math.max(0, this.viewportWidth() - 420) / this.store.preferences().dayWidth) * 2 + 14));
+    Math.ceil(Math.max(0, this.viewportWidth() - this.namesWidth()) / this.store.preferences().dayWidth) * 2 + 14));
   private layoutKey = ''; 
   readonly start = computed(() => addDays(this.windowCenter(), -Math.floor(this.span() / 2)));
   readonly width = computed(() => this.span() * this.store.preferences().dayWidth);
@@ -214,7 +215,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   position(center = this.store.preferences().center): void {
     if (!this.viewport || this.drag || this.destroyed) return; clearTimeout(this.scrollTimer); this.positioning = true;
     const el = this.viewport.nativeElement;
-    el.scrollLeft = this.store.preferences().scrollLeft ?? Math.max(0, this.x(center) + this.store.preferences().dayWidth / 2 - (el.clientWidth - 420) / 2);
+    el.scrollLeft = this.store.preferences().scrollLeft ?? Math.max(0, this.x(center) + this.store.preferences().dayWidth / 2 - (el.clientWidth - this.namesWidth()) / 2);
     el.scrollTop = this.store.preferences().scrollTop ?? 0;
     setTimeout(() => { this.positioning = false; }, 0);
   }
@@ -226,7 +227,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   onScroll(): void {
     if (this.positioning || this.drag || this.destroyed) return;
     const el = this.viewport.nativeElement, left = el.scrollLeft;
-    const chartWidth = Math.max(0, el.clientWidth - 420), max = this.width() - chartWidth;
+    const chartWidth = Math.max(0, el.clientWidth - this.namesWidth()), max = this.width() - chartWidth;
     const threshold = Math.min(chartWidth / 4, this.store.preferences().dayWidth * 7);
     const direction = left >= max - threshold ? 1 : left <= threshold ? -1 : 0;
     if (direction && max > 0) {
@@ -248,7 +249,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   visibleCenter(): string {
     if (!this.viewport) return this.store.preferences().center;
     const el = this.viewport.nativeElement;
-    return addDays(this.start(), Math.floor((el.scrollLeft + (el.clientWidth - 420) / 2) / this.store.preferences().dayWidth));
+    return addDays(this.start(), Math.floor((el.scrollLeft + (el.clientWidth - this.namesWidth()) / 2) / this.store.preferences().dayWidth));
   }
   revealTask(id: string): void {
     const task = this.store.document().tasks.find(t => t.id === id); if (!task || !isScheduled(task)) return;
