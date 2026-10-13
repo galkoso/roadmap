@@ -1,0 +1,37 @@
+<main class="app-shell" dir="rtl">
+  <header class="app-heading"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><h1>מפת הדרכים של המדור</h1><p>תכנון אישי <span>·</span> ראשון–חמישי</p></div><span class="local-badge">◉ מרחב מקומי</span></header>
+  <section class="toolbar" aria-label="כלי תכנון">
+    <button class="primary add-work" (click)="openWork(null)" [disabled]="!store.loaded()"><span>＋</span> הוספת עבודה</button>
+    <div class="segmented" aria-label="רמת תצוגה"><button [class.active]="store.preferences().mode === 'weeks'" (click)="setMode('weeks')">שבועות</button><button [class.active]="store.preferences().mode === 'months'" (click)="setMode('months')">חודשים</button><button [class.active]="store.preferences().mode === 'quarters'" (click)="setMode('quarters')">רבעונים</button></div>
+    <div class="navigation"><button class="icon-button" aria-label="תקופה קודמת" (click)="navigate(-1)">→</button><button (click)="goToday()">היום</button><button class="icon-button" aria-label="תקופה הבאה" (click)="navigate(1)">←</button></div>
+    <div class="zoom"><button class="icon-button" aria-label="התקרבות" (click)="zoom(1)">＋</button><button class="icon-button" aria-label="התרחקות" (click)="zoom(-1)">−</button></div>
+    <div class="history"><button class="icon-button" aria-label="ביטול שינוי" title="Undo · Ctrl+Z" [disabled]="!store.undoStack().length" (click)="store.undo(); closeEditor()">↶</button><button class="icon-button" aria-label="החזרת שינוי" title="Redo · Ctrl+Shift+Z" [disabled]="!store.redoStack().length" (click)="store.redo(); closeEditor()">↷</button></div>
+    <span class="save-state" role="status" [class.failed]="!!store.error()"><i></i>{{ store.saveStatus() }}</span>
+    <div class="menu-wrap"><button class="icon-button menu-button" aria-label="ניהול צוותים וגיבוי" [attr.aria-expanded]="menu()" (click)="menu.set(!menu())">⋯</button>@if (menu()) { <div class="dropdown"><button (click)="showPanel('teams')">ניהול צוותים</button><button (click)="showPanel('backup')">גיבוי ושחזור</button></div> }</div>
+  </section>
+  @if (store.error()) { <div class="error-banner" role="alert"><span>{{ store.error() }}</span><button (click)="download()">ייצוא המצב הנוכחי</button>@if (store.conflict()) { <button (click)="store.reload(); closeEditor()">טעינת הגרסה המקומית החדשה</button> } @else { <button (click)="store.retry()">ניסיון שמירה נוסף</button> }</div> }
+  @if (store.loaded()) { <app-timeline [selected]="selected()" (selectTask)="selectTask($event)" (editWork)="openWork($event)"/> } @else { <div class="loading">{{ store.saveStatus() }}</div> }
+  <div class="notice" role="status" aria-live="polite">{{ store.notice() || 'כל צוות רואה את חלקו. העבודה המשותפת נשארת מחוברת.' }}</div>
+  @if (selected() || newTaskWork()) { <app-task-editor [taskId]="selected()" [workId]="newTaskWork()" [newTask]="!!newTaskWork()" (close)="closeEditor()"/> }
+  @if (panel() === 'work') {
+    <section class="editor-panel compact-panel" aria-label="עריכת עבודה"><div class="panel-heading"><div><span class="eyebrow">{{ workId ? 'פרטי עבודה' : 'יצירת עבודה' }}</span><h2>{{ workId ? workTitle : 'עבודה חדשה' }}</h2></div><button class="icon-button" aria-label="סגירת עריכת עבודה" (click)="panel.set(null)">×</button></div>
+      <form (ngSubmit)="saveWork()"><div class="field-grid"><label>כותרת העבודה<input name="work-title" [(ngModel)]="workTitle" required maxlength="200"></label>@if (workStart) { <label>הזזת כל העבודה לתאריך התחלה<input type="date" name="work-start" [(ngModel)]="workStart" dir="ltr"><small>כל המשימות וכל הצוותים יזוזו יחד</small></label> }</div>@if (workError) { <p class="field-error" role="alert">{{ workError }}</p> }<div class="form-actions"><button class="primary" type="submit">שמירת עבודה</button>@if (workId) { <button type="button" (click)="addTask(workId)">＋ הוספת משימה</button><button type="button" class="danger text-button" (click)="removeWork()">מחיקת עבודה</button> }</div></form>
+    </section>
+  }
+  @if (panel() === 'teams') {
+    <section class="editor-panel" aria-label="ניהול צוותים"><div class="panel-heading"><div><span class="eyebrow">סביבת התכנון</span><h2>ניהול צוותים</h2></div><button class="icon-button" aria-label="סגירת ניהול צוותים" (click)="panel.set(null)">×</button></div>
+      @for (team of orderedTeams(); track team.id; let i = $index) { <div class="team-edit-row"><label>שם הצוות<input [(ngModel)]="teamDrafts[team.id]" [attr.aria-label]="'שם ' + team.name"></label><button (click)="renameTeam(team.id)">שמירת שם</button><span class="field-hint">{{ teamTaskCount(team.id) }} משימות</span><button class="icon-button" [disabled]="i === 0" aria-label="העברת צוות למעלה" (click)="reorderTeam(team.id, -1)">↑</button><button class="icon-button" [disabled]="i === orderedTeams().length - 1" aria-label="העברת צוות למטה" (click)="reorderTeam(team.id, 1)">↓</button>@if (teamTaskCount(team.id)) { <label class="transfer-label">העברת משימות לפני מחיקה<select [(ngModel)]="transfer[team.id]"><option value="">בחרו צוות</option>@for (target of orderedTeams(); track target.id) { @if (target.id !== team.id) { <option [value]="target.id">{{ target.name }}</option> } }</select></label> }<button class="danger text-button" [disabled]="orderedTeams().length === 1" (click)="removeTeam(team.id)">מחיקה</button></div> }
+      <form class="add-team-form" (ngSubmit)="addTeam()"><label>צוות חדש<input name="new-team" [(ngModel)]="teamName" placeholder="שם הצוות" required></label><button class="primary">הוספת צוות</button></form>
+    </section>
+  }
+  @if (panel() === 'backup') {
+    <section class="editor-panel backup-panel" aria-label="גיבוי ושחזור"><div class="panel-heading"><div><span class="eyebrow">הנתונים שלכם</span><h2>גיבוי ושחזור</h2></div><button class="icon-button" aria-label="סגירת הגיבוי" (click)="panel.set(null)">×</button></div>
+      <p>התכנון נשמר מקומית בדפדפן ובכתובת היישום הזו. מחיקת נתוני הדפדפן או שינוי כתובת עלולים להפריד אתכם מהתכנון; הם אינם גיבוי. שמרו קובץ גיבוי במקום בטוח.</p>
+      <div class="form-actions"><button class="primary" (click)="download()">↓ ייצוא גיבוי JSON</button><label class="file-button">↑ בחירת קובץ לשחזור<input type="file" accept=".json,application/json" (change)="readImport($event)" aria-label="בחירת קובץ גיבוי"></label><button (click)="requestPersistence()">בקשת אחסון מתמשך</button></div>
+      <p class="field-hint">{{ persistenceMessage() || 'אחסון מתמשך תלוי באישור הדפדפן ואינו חסין ממחיקה.' }}</p>
+      @if (backupError()) { <p class="field-error" role="alert">{{ backupError() }}</p> }
+      @if (importCandidate(); as backup) { <div class="import-confirm"><h3>הגיבוי תקין ומוכן לייבוא</h3><p>{{ backup.document.teams.length }} צוותים · {{ backup.document.workItems.length }} עבודות · {{ backup.document.tasks.length }} משימות</p><p>הייבוא יחליף את התכנון הנוכחי. ניתן לייצא אותו לפני ההחלפה.</p><div class="form-actions"><button (click)="download()">ייצוא התכנון הנוכחי</button><button class="primary" [disabled]="store.importing()" (click)="confirmImport()">אישור והחלפת התכנון</button><button (click)="importCandidate.set(null)">ביטול</button></div></div> }
+    </section>
+  }
+  <footer class="app-footer"><span>תכנון ברור. מקום לכל צוות.</span><span>נתונים מקומיים · ללא שירות מרוחק</span></footer>
+</main>

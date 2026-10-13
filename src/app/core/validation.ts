@@ -1,5 +1,5 @@
 import { Backup, RoadmapDocument, ViewPreferences } from './model';
-import { epoch, validateRange } from './dates';
+import { addWorkingDays, epoch, validateRange } from './dates';
 import { topological } from './scheduler';
 function assert(test: unknown, message = 'מבנה קובץ הגיבוי אינו תקין'): asserts test { if (!test) throw new Error(message); }
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -33,8 +33,7 @@ export function validateDocument(value: unknown): RoadmapDocument {
   for (const d of doc.dependencies) {
     const p = doc.tasks.find(t => t.id === d.predecessorId)!, s = doc.tasks.find(t => t.id === d.successorId)!;
     // Imported schedules must satisfy all finish-to-start constraints.
-    const pEnd = epoch(p.endDate), sStart = epoch(s.startDate);
-    assert(sStart > pEnd, 'תכנון מיובא מפר קשרי תלות');
+    assert(s.startDate >= addWorkingDays(p.endDate, 1 + d.lagWorkingDays), 'תכנון מיובא מפר קשרי תלות');
   }
   return structuredClone(doc);
 }
@@ -43,6 +42,7 @@ export function validatePreferences(value: unknown): ViewPreferences {
   assert(['weeks', 'months', 'quarters'].includes(String(value['mode'])));
   assert(typeof value['dayWidth'] === 'number' && value['dayWidth'] >= 6 && value['dayWidth'] <= 100);
   assert(text(value['center'])); epoch(value['center']);
+  assert(value['scrollLeft'] === undefined || (typeof value['scrollLeft'] === 'number' && Number.isFinite(value['scrollLeft']) && value['scrollLeft'] >= 0));
   assert(Array.isArray(value['collapsed']) && value['collapsed'].every(text));
   return structuredClone(value) as unknown as ViewPreferences;
 }

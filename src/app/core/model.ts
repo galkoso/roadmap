@@ -9,7 +9,7 @@ export interface Dependency { id: string; predecessorId: string; successorId: st
 export interface RoadmapDocument {
   schemaVersion: number; revision: number; teams: Team[]; workItems: WorkItem[]; tasks: Task[]; dependencies: Dependency[];
 }
-export interface ViewPreferences { mode: 'weeks' | 'months' | 'quarters'; dayWidth: number; center: string; collapsed: string[] }
+export interface ViewPreferences { mode: 'weeks' | 'months' | 'quarters'; dayWidth: number; center: string; collapsed: string[]; scrollLeft?: number }
 export interface Backup { schemaVersion: number; exportedAt: string; document: RoadmapDocument; preferences: ViewPreferences }
 export const statuses: Record<TaskStatus, string> = { planned: 'מתוכננת', in_progress: 'בביצוע', completed: 'הושלמה' };
 export const palette = ['#3975d5', '#8c62c7', '#239b87', '#de9950', '#d66883', '#64748b'];

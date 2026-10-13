@@ -26,16 +26,16 @@ export class RoadmapStorage {
     const db = await this.open();
     return new Promise((resolve, reject) => {
       const tx = db.transaction('roadmap', 'readwrite'), store = tx.objectStore('roadmap');
-      const get = store.get('current'); let conflict = false, revision = 0;
+      const get = store.get('current'); let conflict = false, revision = 0; let writeError: unknown;
       get.onsuccess = () => {
         const stored = get.result as Stored | undefined;
         const current = stored?.document.revision ?? null;
         if (current !== expectedRevision) { conflict = true; tx.abort(); return; }
         revision = (current ?? 0) + 1;
-        store.put({ document: { ...document, revision }, preferences }, 'current');
+        try { store.put({ document: { ...document, revision }, preferences }, 'current'); } catch (error) { writeError = error; tx.abort(); }
       };
       tx.oncomplete = () => resolve(revision);
-      tx.onabort = tx.onerror = () => reject(conflict ? new RevisionConflict() : tx.error ?? new Error('השמירה המקומית נכשלה'));
+      tx.onabort = tx.onerror = () => reject(conflict ? new RevisionConflict() : writeError ?? tx.error ?? new Error('השמירה המקומית נכשלה'));
     });
   }
 }

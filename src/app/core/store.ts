@@ -10,6 +10,7 @@ export class RoadmapStore {
   readonly visible = computed(() => this.preview() ?? this.document());
   readonly preferences = signal<ViewPreferences>(initialPreferences());
   readonly loaded = signal(false);
+  readonly importing = signal(false);
   readonly saveStatus = signal('טוען...');
   readonly error = signal('');
   readonly conflict = signal(false);
@@ -38,7 +39,7 @@ export class RoadmapStore {
   }
   private message(error: unknown): string { return error instanceof Error ? error.message : 'השמירה המקומית נכשלה'; }
   commit(next: RoadmapDocument, message = 'התכנון עודכן'): void {
-    if (!this.loaded()) return;
+    if (!this.loaded() || this.importing()) return;
     next = validateDocument(next);
     this.undoStack.update(stack => [...stack.slice(-49), clone(this.document())]); this.redoStack.set([]);
     this.apply(next, message);
@@ -47,16 +48,16 @@ export class RoadmapStore {
     next.revision = this.document().revision; this.document.set(next); this.preview.set(null); this.notice.set(message); this.queueSave();
   }
   undo(): void {
-    const stack = this.undoStack(); if (!stack.length) return;
+    const stack = this.undoStack(); if (!stack.length || this.importing()) return;
     this.redoStack.update(s => [...s, clone(this.document())]); this.undoStack.set(stack.slice(0, -1));
     this.apply(clone(stack.at(-1)!), 'השינוי בוטל');
   }
   redo(): void {
-    const stack = this.redoStack(); if (!stack.length) return;
+    const stack = this.redoStack(); if (!stack.length || this.importing()) return;
     this.undoStack.update(s => [...s, clone(this.document())]); this.redoStack.set(stack.slice(0, -1));
     this.apply(clone(stack.at(-1)!), 'השינוי הוחזר');
   }
-  setPreferences(patch: Partial<ViewPreferences>): void { this.preferences.update(p => ({ ...p, ...patch })); if (this.loaded()) this.queueSave(); }
+  setPreferences(patch: Partial<ViewPreferences>): void { if (this.importing()) return; this.preferences.update(p => ({ ...p, ...patch })); if (this.loaded()) this.queueSave(); }
   private queueSave(): void {
     if (this.failed) { this.saveStatus.set('שינויים בזיכרון בלבד'); return; }
     const snapshot = clone(this.document()), prefs = clone(this.preferences());
@@ -69,11 +70,11 @@ export class RoadmapStore {
         this.pending--; if (!this.pending) this.saveStatus.set('נשמר');
       } catch (error) {
         this.pending--; this.failed = true; this.conflict.set(error instanceof RevisionConflict);
-        this.error.set(this.message(error)); this.saveStatus.set('שינויים בזיכרון בלבד');
+        this.error.set(error instanceof RevisionConflict ? error.message : 'השמירה המקומית נכשלה. השינויים נשארו בזיכרון. ' + this.message(error)); this.saveStatus.set('שינויים בזיכרון בלבד');
       }
     });
   }
-  retry(): void { if (this.conflict()) return; this.failed = false; this.error.set(''); this.queueSave(); }
+  retry(): void { if (!this.loaded()) { this.failed = false; this.error.set(''); void this.initialize(); return; } if (this.conflict()) return; this.failed = false; this.error.set(''); this.queueSave(); }
   async reload(): Promise<void> {
     await this.chain;
     try {
@@ -86,8 +87,10 @@ export class RoadmapStore {
   }
   async importBackup(backup: Backup): Promise<void> {
     const doc = validateDocument(backup.document), preferences = validatePreferences(backup.preferences);
+    if (this.importing()) throw new Error('ייבוא כבר מתבצע');
+    this.importing.set(true);
     await this.chain;
-    if (this.failed) throw new Error('יש לפתור את תקלה השמירה לפני החלפת התכנון');
+    if (this.failed) { this.importing.set(false); throw new Error('יש לפתור את תקלה השמירה לפני החלפת התכנון'); }
     this.saveStatus.set('שומר...');
     try {
       const revision = await this.storage.save(doc, preferences, this.persistedRevision);
@@ -97,6 +100,6 @@ export class RoadmapStore {
     } catch (error) {
       this.failed = true; this.conflict.set(error instanceof RevisionConflict); this.error.set(this.message(error));
       this.saveStatus.set('תקלה בשמירה'); throw error;
-    }
+    } finally { this.importing.set(false); }
   }
 }

@@ -15,21 +15,26 @@ export function nextWorkingDay(date: string): string {
   return date;
 }
 export function addWorkingDays(date: string, amount: number): string {
-  if (!Number.isInteger(amount)) throw new Error('מספר ימי עבודה חייב להיות שלם');
-  const step = Math.sign(amount);
-  for (let left = Math.abs(amount); left > 0;) { date = addDays(date, step); if (isWorkingDay(date)) left--; }
-  return date;
+  epoch(date);
+  if (!Number.isSafeInteger(amount)) throw new Error('מספר ימי עבודה חייב להיות שלם ובטווח בטוח');
+  const step = Math.sign(amount); let left = Math.abs(amount);
+  // Normalize a weekend input while counting only a reached working day.
+  while (left && !isWorkingDay(date)) { date = addDays(date, step); if (isWorkingDay(date)) left--; }
+  const weeks = Math.floor(left / 5);
+  if (weeks) date = addDays(date, weeks * 7 * step);
+  left %= 5;
+  while (left > 0) { date = addDays(date, step); if (isWorkingDay(date)) left--; }
+  epoch(date); return date;
 }
 export function workingDifference(from: string, to: string): number {
-  const direction = Math.sign(daysBetween(from, to));
-  let count = 0;
-  while (from !== to) { from = addDays(from, direction); if (isWorkingDay(from)) count += direction; }
-  return count;
+  const distance = daysBetween(from, to);
+  return distance > 0 ? duration(addDays(from, 1), to) : distance < 0 ? -duration(to, addDays(from, -1)) : 0;
 }
 export function duration(start: string, end: string): number {
-  if (end < start) throw new Error('תאריך הסיום לפני תאריך ההתחלה');
-  let count = 0;
-  for (let date = start; date <= end; date = addDays(date, 1)) if (isWorkingDay(date)) count++;
+  const days = daysBetween(start, end) + 1;
+  if (days <= 0) throw new Error('תאריך הסיום לפני תאריך ההתחלה');
+  const weeks = Math.floor(days / 7); let count = weeks * 5;
+  for (let i = 0; i < days % 7; i++) if (isWorkingDay(addDays(start, i))) count++;
   return count;
 }
 export function validateRange(start: string, end: string): void {

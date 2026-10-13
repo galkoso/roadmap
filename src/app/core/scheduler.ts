@@ -12,7 +12,7 @@ export function topological(doc: RoadmapDocument): string[] {
     const key = a.id + ':' + b.id;
     if (pairs.has(key)) throw new Error('קשר תלות כפול');
     pairs.add(key);
-    if (d.type !== 'finish_to_start' || !Number.isInteger(d.lagWorkingDays) || d.lagWorkingDays < 0) throw new Error('מרווח תלות אינו תקין');
+    if (d.type !== 'finish_to_start' || !Number.isSafeInteger(d.lagWorkingDays) || d.lagWorkingDays < 0) throw new Error('מרווח תלות אינו תקין');
     indegree.set(b.id, indegree.get(b.id)! + 1);
     outgoing.set(a.id, [...(outgoing.get(a.id) ?? []), b.id]);
   }
@@ -77,7 +77,10 @@ export function shiftWork(document: RoadmapDocument, id: string, start: string):
 export function setIncoming(document: RoadmapDocument, id: string, incoming: Dependency[]): RoadmapDocument {
   const doc = clone(document);
   const previous = new Set(doc.dependencies.filter(d => d.successorId === id).map(d => d.predecessorId));
-  doc.dependencies = [...doc.dependencies.filter(d => d.successorId !== id), ...clone(incoming)];
+  const incomingById = new Map(incoming.map(d => [d.id, d]));
+  const oldIds = new Set(doc.dependencies.map(d => d.id));
+  doc.dependencies = doc.dependencies.flatMap(d => d.successorId !== id ? [d] : incomingById.has(d.id) ? [clone(incomingById.get(d.id)!)] : []);
+  doc.dependencies.push(...clone(incoming.filter(d => !oldIds.has(d.id))));
   topological(doc);
   const task = doc.tasks.find(t => t.id === id)!;
   // New links preserve an already legal start; explicit edits to existing lag values take effect.
