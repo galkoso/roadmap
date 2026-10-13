@@ -1,4 +1,5 @@
 import { clone, Dependency, isScheduled, RoadmapDocument, ScheduledTask, Task } from './model';
+import { changeTaskTeam, validateAssignment } from './members';
 import { addWorkingDays, duration, nextWorkingDay, validateRange, workingDifference } from './dates';
 export function topological(doc: RoadmapDocument): string[] {
   const indegree = new Map(doc.tasks.map(t => [t.id, 0]));
@@ -54,7 +55,9 @@ export function editTask(document: RoadmapDocument, id: string, patch: Partial<T
   const doc = clone(document), task = doc.tasks.find(t => t.id === id);
   if (!task || !isScheduled(task)) throw new Error('המשימה אינה משובצת בציר הזמן');
   const scheduling = (patch.startDate !== undefined && patch.startDate !== task.startDate) || (patch.endDate !== undefined && patch.endDate !== task.endDate);
+  if (patch.teamId !== undefined) changeTaskTeam(doc, task, patch.teamId);
   Object.assign(task, patch, { id: task.id, planningState: 'scheduled' });
+  validateAssignment(doc, task, task.assigneeId ?? null);
   topological(doc);
   validateRange(task.startDate, task.endDate);
   if (scheduling) {
@@ -110,7 +113,9 @@ export function scheduleTask(document: RoadmapDocument, id: string, options: Sch
   if (!Number.isSafeInteger(options.workingDays) || options.workingDays < 1 || options.workingDays > 10000) throw new Error('משך חייב להיות מספר שלם בין 1 ל־10,000 ימי עבודה');
   const doc = clone(document), index = doc.tasks.findIndex(t => t.id === id), item = doc.tasks[index];
   if (!item || isScheduled(item)) throw new Error('הפריט אינו בבקלוג');
-  const task: ScheduledTask = { ...item, planningState: 'scheduled', teamId: options.teamId, workItemId: options.workItemId,
+  changeTaskTeam(doc, item, options.teamId);
+  validateAssignment(doc, item, item.assigneeId ?? null);
+  const task: ScheduledTask = { ...item, estimatedWorkingDays: options.workingDays, planningState: 'scheduled', teamId: options.teamId, workItemId: options.workItemId,
     startDate: options.startDate, endDate: addWorkingDays(options.startDate, options.workingDays - 1) };
   doc.tasks[index] = task; topological(doc);
   const minimum = requiredStart(doc, id); if (minimum && task.startDate < minimum) moveTask(task, minimum);
@@ -128,5 +133,5 @@ export function returnToBacklog(document: RoadmapDocument, id: string): RoadmapD
   const blockers = doc.tasks.filter(t => t.id !== id && reachable.has(t.id) && isScheduled(t));
   if (blockers.length) throw new Error('לא ניתן להחזיר לבקלוג. משימות משובצות שתלויות בה: ' + blockers.map(t => t.title).join(', '));
   const { startDate, endDate, ...rest } = task;
-  doc.tasks[index] = { ...rest, planningState: 'backlog' }; return doc;
+  doc.tasks[index] = { ...rest, estimatedWorkingDays: duration(startDate, endDate), planningState: 'backlog' }; return doc;
 }

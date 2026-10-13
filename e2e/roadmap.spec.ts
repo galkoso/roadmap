@@ -154,9 +154,9 @@ test('reload returns to today; left resize keeps end and pointer cancellation re
   const before = await planning(page); await drag(page, architecture, 28, false, 'start'); await saved(page); const resized = await planning(page);
   expect(resized.document.tasks[0].endDate).toBe(before.document.tasks[0].endDate); expect(resized.document.tasks[0].startDate).not.toBe(before.document.tasks[0].startDate); expect(resized.document.tasks[1]).toEqual(before.document.tasks[1]);
   const bar = page.getByTestId(architecture), box = await bar.boundingBox(); await page.mouse.move(box!.x + box!.width / 2, box!.y + 12); await page.mouse.down(); await page.mouse.move(box!.x + box!.width / 2 + 28, box!.y + 12); await page.evaluate(() => document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }))); await page.mouse.up(); expect((await planning(page)).document.tasks).toEqual(resized.document.tasks);
-  await page.locator('.timeline-viewport').evaluate(el => el.scrollLeft += 125); const centeredDate = await page.locator('.timeline-viewport').evaluate(el => { const ticks = el.querySelectorAll('.day-band > div'); const box = el.getBoundingClientRect(), x = box.x + (el.clientWidth - 320) / 2; return Array.from(ticks).find(t => { const rect = t.getBoundingClientRect(); return rect.left <= x && rect.right > x; })?.textContent; });
+  await page.locator('.timeline-viewport').evaluate(el => el.scrollLeft += 125); const centeredDate = await page.locator('.timeline-viewport').evaluate(el => { const ticks = el.querySelectorAll('.day-band > div'); const box = el.getBoundingClientRect(), x = box.x + (el.clientWidth - (el.querySelector('.names-header') as HTMLElement).offsetWidth) / 2; return Array.from(ticks).find(t => { const rect = t.getBoundingClientRect(); return rect.left <= x && rect.right > x; })?.textContent; });
   await expect.poll(async () => Number((await planning(page)).preferences.center.slice(8))).toBe(Number(centeredDate));
-  await page.reload(); await saved(page); await expect.poll(async () => page.locator('.timeline-viewport').evaluate(el => { const line = el.querySelector('.today-line')!.getBoundingClientRect(); const box = el.getBoundingClientRect(); return Math.abs(line.x - (box.x + (el.clientWidth - 320) / 2)); })).toBeLessThan(3);
+  await page.reload(); await saved(page); await expect.poll(async () => page.locator('.timeline-viewport').evaluate(el => { const line = el.querySelector('.today-line')!.getBoundingClientRect(); const box = el.getBoundingClientRect(); return Math.abs(line.x - (box.x + (el.clientWidth - (el.querySelector('.names-header') as HTMLElement).offsetWidth) / 2)); })).toBeLessThan(3);
 });
 test('timeline delete buttons confirm, remove only related data, and undo restores shared missions', async ({ page }) => {
   const before = await planning(page);
@@ -191,7 +191,7 @@ test('every view opens on today and year jumps work in both directions without c
     await expect.poll(() => page.locator('.timeline-viewport').evaluate(el => {
       const line = el.querySelector('.today-line'); if (!line) return Infinity;
       const box = el.getBoundingClientRect();
-      return Math.abs(line.getBoundingClientRect().x - (box.x + (el.clientWidth - 320) / 2));
+      return Math.abs(line.getBoundingClientRect().x - (box.x + (el.clientWidth - (el.querySelector('.names-header') as HTMLElement).offsetWidth) / 2));
     })).toBeLessThan(3);
   }
   await centeredToday();
@@ -224,14 +224,14 @@ for (const mode of ['שבועות', 'חודשים', 'רבעונים']) {
         const start = el.querySelector('.date-header')!.getAttribute('data-range-start')!;
         const tickWidth = (el.querySelector('.day-band > div') as HTMLElement).getBoundingClientRect().width;
         const dayWidth = document.querySelector('.segmented .active')?.textContent === 'רבעונים' ? tickWidth / 7 : tickWidth;
-        return Date.parse(start) / 86400000 + (el.scrollLeft + (el.clientWidth - 320) / 2) / dayWidth;
+        return Date.parse(start) / 86400000 + (el.scrollLeft + (el.clientWidth - (el.querySelector('.names-header') as HTMLElement).offsetWidth) / 2) / dayWidth;
       }, direction);
       await expect.poll(() => page.locator('.date-header').getAttribute('data-range-start')).not.toBe(oldStart);
       const actual = await viewport.evaluate(el => {
         const start = el.querySelector('.date-header')!.getAttribute('data-range-start')!;
         const tickWidth = (el.querySelector('.day-band > div') as HTMLElement).getBoundingClientRect().width;
         const dayWidth = document.querySelector('.segmented .active')?.textContent === 'רבעונים' ? tickWidth / 7 : tickWidth;
-        return Date.parse(start) / 86400000 + (el.scrollLeft + (el.clientWidth - 320) / 2) / dayWidth;
+        return Date.parse(start) / 86400000 + (el.scrollLeft + (el.clientWidth - (el.querySelector('.names-header') as HTMLElement).offsetWidth) / 2) / dayWidth;
       });
       expect(Math.abs(actual - expected)).toBeLessThan(0.05);
     }
@@ -247,7 +247,7 @@ for (const mode of ['שבועות', 'חודשים', 'רבעונים']) {
     await page.getByRole('button', { name: 'היום', exact: true }).click();
     await expect.poll(() => viewport.evaluate(el => {
       const line = el.querySelector('.today-line'); if (!line) return Infinity;
-      return Math.abs(line.getBoundingClientRect().x - (el.getBoundingClientRect().x + (el.clientWidth - 320) / 2));
+      return Math.abs(line.getBoundingClientRect().x - (el.getBoundingClientRect().x + (el.clientWidth - (el.querySelector('.names-header') as HTMLElement).offsetWidth) / 2));
     })).toBeLessThan(3);
   });
 }

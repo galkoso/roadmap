@@ -1,17 +1,21 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { AssigneeFieldComponent } from './assignee-field.component';
+import { changeTaskTeam } from '../core/members';
 import { RoadmapStore } from '../core/store';
 import { clone, Dependency, isScheduled, palette, ScheduledTask, Task, uid } from '../core/model';
 import { duration, formatDate, nextWorkingDay, today, validateRange } from '../core/dates';
 import { editTask, returnToBacklog, setIncoming } from '../core/scheduler';
 @Component({
-  selector: 'app-task-editor', standalone: true, imports: [FormsModule], changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'app-task-editor', standalone: true, imports: [FormsModule, AssigneeFieldComponent], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (draft) {
       <section class="editor-panel" aria-label="עריכת משימה"><div class="panel-heading"><div><span class="eyebrow">{{ newTask() ? 'משימה חדשה' : 'פרטי המשימה' }}</span><h2>{{ draft.title || 'משימה חדשה' }}</h2></div><button class="icon-button" aria-label="סגירת עריכת משימה" (click)="close.emit()">×</button></div>
       <form (ngSubmit)="save()" class="task-form">
-        <div class="form-main">@if (newTask()) { <label class="check-label schedule-toggle"><input type="checkbox" name="save-as-backlog" [(ngModel)]="saveAsBacklog">הוספה לבקלוג</label> }<label>שם המשימה<input name="title" [(ngModel)]="draft.title" required maxlength="200"></label>
-          <div class="field-grid"><label>צוות אחראי<select aria-label="צוות אחראי" name="team" [(ngModel)]="draft.teamId"><option [ngValue]="null">ללא צוות</option>@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
+        <div class="form-main">@if (newTask()) { <label class="check-label schedule-toggle"><input type="checkbox" name="save-as-backlog" [(ngModel)]="saveAsBacklog">הוספה לבקלוג</label>@if (saveAsBacklog) { <label>משך משוער בימי עבודה<input type="number" name="backlog-days" [(ngModel)]="backlogWorkingDays" min="1" max="10000" step="1" dir="ltr" required></label> } }<label>שם המשימה<input name="title" [(ngModel)]="draft.title" required maxlength="200"></label>
+          <div class="field-grid"><label>צוות אחראי<select aria-label="צוות אחראי" name="team" [ngModel]="draft.teamId" (ngModelChange)="changeTeam($event)"><option [ngValue]="null">ללא צוות</option>@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
+          <app-assignee-field [task]="draft" (changed)="draft.assigneeId = $event"/>
+          @if (assignmentMessage) { <p class="field-hint" role="status">{{ assignmentMessage }}</p> }
           <label>עבודה קשורה<select aria-label="עבודה קשורה" name="work" [(ngModel)]="draft.workItemId"><option [ngValue]="null">פריט עצמאי</option>@for (work of store.document().workItems; track work.id) { <option [value]="work.id">{{ work.title }}</option> }</select></label><label>סטטוס<select aria-label="סטטוס" name="status" [(ngModel)]="draft.status"><option value="planned">מתוכננת</option><option value="in_progress">בביצוע</option><option value="completed">הושלמה</option></select></label>
           @if (!saveAsBacklog) { <label>תאריך התחלה<input type="date" name="start" [(ngModel)]="draft.startDate" (ngModelChange)="checkDates()" dir="ltr"></label>
           <label>תאריך סיום<input type="date" name="end" [(ngModel)]="draft.endDate" (ngModelChange)="checkDates()" dir="ltr"></label> }</div>
@@ -35,7 +39,9 @@ import { editTask, returnToBacklog, setIncoming } from '../core/scheduler';
 export class TaskEditorComponent {
   readonly store = inject(RoadmapStore); readonly taskId = input<string | null>(null); readonly workId = input<string | null>(null);
   readonly newTask = input(false); readonly close = output<void>(); readonly deleteTask = output<string>(); readonly colors = palette; readonly formatted = formatDate;
-  saveAsBacklog = false;
+  assignmentMessage = '';
+  changeTeam(teamId: string | null): void { if (this.draft) this.assignmentMessage = changeTaskTeam(this.store.document(), this.draft, teamId) ? 'האחראי הוסר כי אינו שייך לצוות החדש' : ''; }
+  saveAsBacklog = false; backlogWorkingDays: number | null = 5;
   draft: ScheduledTask | null = null; incoming: Dependency[] = []; error = ''; dateError = ''; private original: ScheduledTask | null = null; private originalIncoming: Dependency[] = [];
   constructor() {
     effect(() => {
@@ -44,9 +50,9 @@ export class TaskEditorComponent {
       const doc = this.store.document();
       if (this.draft && this.draft.id === id && !isNew) return;
       if (isNew && workId && this.draft?.workItemId === workId && !this.original) return;
-      const task = isNew && workId ? { planningState: 'scheduled' as const, id: uid(), workItemId: workId, teamId: doc.teams[0].id, title: '', startDate: nextWorkingDay(today()), endDate: nextWorkingDay(today()), color: palette[0], status: 'planned' as const, notes: '', order: doc.tasks.length } : doc.tasks.filter(isScheduled).find(t => t.id === id);
+      const task = isNew && workId ? { assigneeId: null, planningState: 'scheduled' as const, id: uid(), workItemId: workId, teamId: doc.teams[0].id, title: '', startDate: nextWorkingDay(today()), endDate: nextWorkingDay(today()), color: palette[0], status: 'planned' as const, notes: '', order: doc.tasks.length } : doc.tasks.filter(isScheduled).find(t => t.id === id);
       this.draft = task ? clone(task) : null; this.original = isNew ? null : this.draft ? clone(this.draft) : null;
-      this.incoming = clone(doc.dependencies.filter(d => d.successorId === id)); this.originalIncoming = clone(this.incoming); this.error = ''; this.saveAsBacklog = false; this.checkDates();
+      this.incoming = clone(doc.dependencies.filter(d => d.successorId === id)); this.originalIncoming = clone(this.incoming); this.error = ''; this.assignmentMessage = ''; this.saveAsBacklog = false; this.backlogWorkingDays = 5; this.checkDates();
     });
   }
   candidates(): Task[] { return this.store.document().tasks.filter(t => !!this.draft?.workItemId && t.workItemId === this.draft.workItemId && t.id !== this.draft?.id); }
@@ -62,26 +68,29 @@ export class TaskEditorComponent {
   checkDates(): void { this.dateError = ''; if (this.draft) try { validateRange(this.draft.startDate, this.draft.endDate); } catch (error) { this.dateError = (error as Error).message; } }
   length(): number { try { return this.draft ? duration(this.draft.startDate, this.draft.endDate) : 0; } catch { return 0; } }
   save(): void {
-    if (!this.draft) return; this.error = ''; this.saveAsBacklog = false; this.checkDates(); if (!this.saveAsBacklog && this.dateError) return;
+    if (!this.draft) return; this.error = ''; this.checkDates(); if (!this.saveAsBacklog && this.dateError) return;
+    if (this.saveAsBacklog && (!Number.isSafeInteger(this.backlogWorkingDays) || Number(this.backlogWorkingDays) < 1 || Number(this.backlogWorkingDays) > 10000)) { this.error = 'משך משוער חייב להיות מספר שלם בין 1 ל־10,000 ימי עבודה'; return; }
     if (!this.draft.title.trim()) { this.error = 'יש להזין שם משימה'; return; }
     try {
       let doc = clone(this.store.document());
       if (this.newTask()) {
         if (this.saveAsBacklog) {
           const { startDate, endDate, ...metadata } = clone(this.draft);
-          doc.tasks.push({ ...metadata, planningState: 'backlog' });
+          doc.tasks.push({ ...metadata, estimatedWorkingDays: Number(this.backlogWorkingDays), planningState: 'backlog' });
         } else doc.tasks.push(clone(this.draft));
       }
       else {
         const current = doc.tasks.find(t => t.id === this.draft!.id); if (!current) throw new Error('המשימה כבר נמחקה');
         const patch: Partial<Task> = {};
-        for (const key of ['title', 'teamId', 'workItemId', 'startDate', 'endDate', 'color', 'status', 'notes'] as const) {
+        for (const key of ['title', 'teamId', 'assigneeId', 'workItemId', 'startDate', 'endDate', 'color', 'status', 'notes'] as const) {
           if (this.draft[key] !== this.original?.[key]) Object.assign(patch, { [key]: this.draft[key] });
         }
-        doc = editTask(doc, this.draft.id, patch);
+        if ('startDate' in patch || 'endDate' in patch || 'workItemId' in patch) doc = editTask(doc, this.draft.id, patch);
+        else Object.assign(current, patch);
       }
       const incoming = this.incoming.map(d => { const old = this.originalIncoming.find(o => o.id === d.id), scheduled = doc.dependencies.find(o => o.id === d.id); return old && scheduled && old.lagWorkingDays === d.lagWorkingDays ? { ...d, lagWorkingDays: scheduled.lagWorkingDays } : d; });
-      doc = setIncoming(doc, this.draft.id, incoming);
+      if (JSON.stringify(incoming) !== JSON.stringify(doc.dependencies.filter(d => d.successorId === this.draft!.id)))
+        doc = setIncoming(doc, this.draft.id, incoming);
       const before = this.store.document();
       const changed = doc.tasks.filter(t => t.id !== this.draft!.id && before.tasks.some(o => o.id === t.id && (o.startDate !== t.startDate || o.endDate !== t.endDate))).map(t => t.title);
       const actual = doc.tasks.find(t => t.id === this.draft!.id)!;

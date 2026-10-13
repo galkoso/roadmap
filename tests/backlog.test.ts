@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { clone, isScheduled, RoadmapDocument, Task } from '../src/app/core/model';
+import { clone, isScheduled, RoadmapDocument, SCHEMA_VERSION, Task } from '../src/app/core/model';
 import { seedDocument, initialPreferences } from '../src/app/core/seed';
 import { addWorkingDays, duration } from '../src/app/core/dates';
-import { returnToBacklog, scheduleTask, shiftTask, shiftWork, topological, workRange } from '../src/app/core/scheduler';
+import { editTask, returnToBacklog, scheduleTask, shiftTask, shiftWork, topological, workRange } from '../src/app/core/scheduler';
 import { exportBackup, parseBackup, validateDocument } from '../src/app/core/validation';
 const get = (doc: RoadmapDocument, id: string) => doc.tasks.find(t => t.id === id)!;
 const standalone = (): Task => ({ id: 'backlog-new', planningState: 'backlog', teamId: null, workItemId: null, title: 'רעיון', notes: '<b>טקסט</b>', color: '#abcdef', status: 'completed', order: 4 });
@@ -13,11 +13,11 @@ function legacyDocument(): Record<string, unknown> {
 describe('backlog schema and legacy migration', () => {
   it('migrates every old task as scheduled with identical IDs, dates, metadata and dependencies; input is untouched', () => {
     const old = legacyDocument(), before = clone(old), migrated = validateDocument(old);
-    expect(migrated.schemaVersion).toBe(2); expect(old).toEqual(before);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION); expect(old).toEqual(before);
     expect(migrated.tasks.map(({ planningState, ...task }) => task)).toEqual(old['tasks']);
     expect(migrated.tasks.every(isScheduled)).toBe(true); expect(migrated.dependencies).toEqual(old['dependencies']);
     const backup = parseBackup(JSON.stringify({ schemaVersion: 1, exportedAt: new Date().toISOString(), document: old, preferences: initialPreferences() }));
-    expect(backup.schemaVersion).toBe(2); expect(backup.document).toEqual(migrated);
+    expect(backup.schemaVersion).toBe(SCHEMA_VERSION); expect(backup.document).toEqual(migrated);
   });
   it('rejects invalid old data instead of inventing dates or unassigning teams', () => {
     const bad = legacyDocument(), before = clone(bad);
@@ -42,7 +42,9 @@ describe('planning state transitions and scheduling with missing dates', () => {
     expect(task.notes).toBe(standalone().notes); expect(task.status).toBe('completed'); expect(task.color).toBe('#abcdef');
     const single = scheduleTask(doc, 'backlog-new', { startDate: '2026-10-15', workingDays: 1, teamId: null, workItemId: null });
     expect(get(single, 'backlog-new').endDate).toBe('2026-10-15');
-    expect(returnToBacklog(scheduled, 'backlog-new')).toEqual(doc);
+    const returned = returnToBacklog(scheduled, 'backlog-new');
+    expect(get(returned, 'backlog-new')).toEqual({ ...standalone(), estimatedWorkingDays: 2 });
+    expect(returned.dependencies).toEqual(doc.dependencies);
     expect(() => scheduleTask(doc, 'backlog-new', { startDate: '2026-10-16', workingDays: 2, teamId: null, workItemId: null })).toThrow(/שישי/);
   });
   it('backlog tasks do not affect the shared work range and stay date-free during task/work dragging', () => {
@@ -70,5 +72,29 @@ describe('planning state transitions and scheduling with missing dates', () => {
     doc.dependencies.push({ id: 'cycle-backlog', predecessorId: 'testing', successorId: 'architecture', type: 'finish_to_start', lagWorkingDays: 0 });
     expect(() => topological(doc)).toThrow(/מעגל/);
     doc.dependencies.pop(); get(doc, 'testing').workItemId = null; expect(() => topological(doc)).toThrow(/אותה עבודה/);
+  });
+});
+
+describe('estimated backlog working days', () => {
+  it('preserves estimates in backups, accepts older records without estimates, and rejects invalid estimates atomically', () => {
+    const doc = seedDocument(); doc.tasks.push({ ...standalone(), estimatedWorkingDays: 7 });
+    expect(parseBackup(exportBackup(doc, initialPreferences())).document).toEqual(doc);
+    expect(validateDocument(seedDocument())).toEqual(seedDocument());
+    const before = clone(doc);
+    for (const estimate of [0, -1, 1.5, 10001, null, '3']) {
+      const invalid = clone(doc); Object.assign(get(invalid, 'backlog-new'), { estimatedWorkingDays: estimate });
+      expect(() => validateDocument(invalid)).toThrow(/משך משוער/);
+    }
+    expect(doc).toEqual(before);
+  });
+  it('uses the actual inclusive working duration when returning a resized scheduled task to backlog', () => {
+    const doc = seedDocument(); doc.tasks.push({ ...standalone(), estimatedWorkingDays: 7 });
+    const scheduled = scheduleTask(doc, 'backlog-new', { startDate: '2026-10-15', workingDays: 3, teamId: null, workItemId: null });
+    expect(get(scheduled, 'backlog-new').estimatedWorkingDays).toBe(3);
+    const resized = editTask(scheduled, 'backlog-new', { endDate: '2026-10-21' });
+    const returned = returnToBacklog(resized, 'backlog-new');
+    expect(get(returned, 'backlog-new').estimatedWorkingDays).toBe(5);
+    expect(get(returned, 'backlog-new').startDate).toBeUndefined();
+    expect(get(doc, 'backlog-new').estimatedWorkingDays).toBe(7);
   });
 });

@@ -4,13 +4,16 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { AssigneeFieldComponent } from './assignee-field.component';
+import { MembersDialogComponent } from './members-dialog.component';
+import { changeTaskTeam, groupByPeople } from '../core/members';
 import { RoadmapStore } from '../core/store';
 import { BacklogTask, clone, Dependency, isScheduled, palette, statuses, Task, uid } from '../core/model';
 import { formatDate, nextWorkingDay, today } from '../core/dates';
 import { requiredStart, scheduleTask, ScheduleOptions } from '../core/scheduler';
 interface BacklogGroup { key: string; name: string; tasks: BacklogTask[] }
 @Component({
-  selector: 'app-backlog', standalone: true, imports: [FormsModule, NgTemplateOutlet], changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'app-backlog', standalone: true, imports: [FormsModule, NgTemplateOutlet, AssigneeFieldComponent, MembersDialogComponent], changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './backlog-page.component.html'
 })
 export class BacklogPageComponent implements AfterViewInit {
@@ -23,6 +26,7 @@ export class BacklogPageComponent implements AfterViewInit {
     ...[...this.store.document().teams].sort((a, b) => a.order - b.order).map(team => ({ key: 'team:' + team.id, name: team.name, tasks: this.tasks().filter(t => t.teamId === team.id) })),
     { key: 'unassigned', name: 'ללא צוות', tasks: this.tasks().filter(t => t.teamId === null) }
   ]);
+  readonly peopleGroups = computed(() => groupByPeople(this.store.document(), this.tasks()));
   readonly draft = signal<BacklogTask | null>(null); readonly mode = signal<'edit' | 'schedule'>('edit');
   readonly error = signal(''); readonly lastScheduled = signal<string | null>(null); readonly colors = palette;
   readonly statusOptions = Object.entries(statuses); readonly formatted = formatDate;
@@ -30,10 +34,15 @@ export class BacklogPageComponent implements AfterViewInit {
   private original = ''; private isNew = false;
   constructor() { effect(() => { if (this.store.loaded()) setTimeout(() => { if (this.list) this.list.nativeElement.scrollTop = this.view().scrollTop; }, 0); }); }
   ngAfterViewInit(): void { setTimeout(() => { if (this.list) this.list.nativeElement.scrollTop = this.view().scrollTop; }, 0); }
-  setView(mode: 'teams' | 'list'): void { this.store.setPreferences({ backlog: { ...this.view(), mode } }); }
+  setView(mode: 'teams' | 'people' | 'list'): void { this.store.setPreferences({ backlog: { ...this.view(), mode } }); }
   toggle(key: string): void {
-    const view = this.view(), collapsed = view.collapsed.includes(key) ? view.collapsed.filter(k => k !== key) : [...view.collapsed, key];
-    this.store.setPreferences({ backlog: { ...view, collapsed } });
+    const view = this.view(), keys = this.collapsedKeys(), collapsed = keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key];
+    this.store.setPreferences({ backlog: { ...view, ...(view.mode === 'people' ? { peopleCollapsed: collapsed } : { collapsed }) } });
+  }
+  collapsedKeys(): string[] { return this.view().mode === 'people' ? this.view().peopleCollapsed ?? [] : this.view().collapsed; }
+  assignmentMessage = '';
+  draftTeam(item: BacklogTask, teamId: string | null): void {
+    this.assignmentMessage = changeTaskTeam(this.store.document(), item, teamId) ? 'האחראי הוסר כי אינו שייך לצוות החדש' : '';
   }
   @HostListener('document:keydown', ['$event']) keyboard(event: KeyboardEvent): void {
     if ((event.target as HTMLElement)?.closest('input, textarea, select, dialog[open]')) return;
@@ -52,18 +61,23 @@ export class BacklogPageComponent implements AfterViewInit {
   private fingerprint(): string { return JSON.stringify([this.draft(), this.incoming, this.startDate, this.workingDays]); }
   isNewItem(): boolean { return this.isNew; }
   statusLabel(status: Task['status']): string { return statuses[status]; }
+  workGroups(tasks: BacklogTask[]): { key: string; name: string; tasks: BacklogTask[] }[] {
+    return [...this.store.document().workItems].sort((a, b) => a.order - b.order)
+      .map(w => ({ key: w.id, name: w.title, tasks: tasks.filter(t => t.workItemId === w.id) }))
+      .concat([{ key: 'standalone', name: 'פריטים עצמאיים', tasks: tasks.filter(t => t.workItemId === null) }]).filter(g => g.tasks.length);
+  }
   workName(id: string | null): string { return this.store.document().workItems.find(w => w.id === id)?.title ?? 'פריט עצמאי'; }
   teamName(id: string | null): string { return this.store.document().teams.find(t => t.id === id)?.name ?? 'ללא צוות'; }
   predecessor(id: string): Task | undefined { return this.store.document().tasks.find(t => t.id === id); }
   changeTeam(item: BacklogTask, teamId: string | null): void {
     const doc = clone(this.store.document()), task = doc.tasks.find(t => t.id === item.id);
-    if (!task || isScheduled(task)) return; task.teamId = teamId; this.store.commit(doc, 'שיוך הצוות עודכן');
+    if (!task || isScheduled(task)) return; const reset = changeTaskTeam(doc, task, teamId); this.store.commit(doc, 'שיוך הצוות עודכן' + (reset ? ' · האחראי הוסר כי אינו שייך לצוות החדש' : ''));
   }
   open(item?: BacklogTask, schedule = false): void {
-    this.isNew = !item; this.mode.set(schedule ? 'schedule' : 'edit'); this.error.set('');
-    this.draft.set(item ? clone(item) : { id: uid(), planningState: 'backlog', teamId: null, workItemId: null, title: '', color: palette[0], status: 'planned', notes: '', order: Math.max(-1, ...this.store.document().tasks.map(t => t.order)) + 1 });
+    this.assignmentMessage = ''; this.isNew = !item; this.mode.set(schedule ? 'schedule' : 'edit'); this.error.set('');
+    this.draft.set(item ? clone(item) : { assigneeId: null, id: uid(), planningState: 'backlog', estimatedWorkingDays: 5, teamId: null, workItemId: null, title: '', color: palette[0], status: 'planned', notes: '', order: Math.max(-1, ...this.store.document().tasks.map(t => t.order)) + 1 });
     this.incoming = clone(this.store.document().dependencies.filter(d => d.successorId === item?.id));
-    this.startDate = nextWorkingDay(today()); this.workingDays = 5;
+    this.startDate = nextWorkingDay(today()); this.workingDays = item?.estimatedWorkingDays ?? 5;
     if (schedule && item) try { const min = requiredStart(this.store.document(), item.id); if (min && min > this.startDate) this.startDate = min; } catch { /* blockers are explained in the preview */ }
     this.original = this.fingerprint(); this.changeDetector.detectChanges(); this.dialog.nativeElement.showModal();
   }
@@ -72,11 +86,12 @@ export class BacklogPageComponent implements AfterViewInit {
   removeDependency(id: string): void { this.incoming = this.incoming.filter(d => d.id !== id); }
   save(): void {
     const draft = this.draft(); if (!draft || this.store.importing()) return; this.error.set('');
+    if (!Number.isSafeInteger(this.workingDays) || Number(this.workingDays) < 1 || Number(this.workingDays) > 10000) { this.error.set('משך משוער חייב להיות מספר שלם בין 1 ל־10,000 ימי עבודה'); return; }
     if (!draft.title.trim()) { this.error.set('יש להזין כותרת'); return; }
     try {
       const doc = clone(this.store.document()), index = doc.tasks.findIndex(t => t.id === draft.id);
       if (!this.isNew && (index < 0 || isScheduled(doc.tasks[index]))) throw new Error('הפריט אינו בבקלוג יותר');
-      const saved = { ...clone(draft), title: draft.title.trim() };
+      const saved = { ...clone(draft), estimatedWorkingDays: Number(this.workingDays), title: draft.title.trim() };
       if (index >= 0) doc.tasks[index] = saved; else doc.tasks.push(saved);
       const keep = new Set(this.incoming.map(d => d.id));
       doc.dependencies = doc.dependencies.filter(d => d.successorId !== draft.id || keep.has(d.id));
@@ -87,7 +102,9 @@ export class BacklogPageComponent implements AfterViewInit {
     const draft = this.draft(); if (!draft) return { changed: [] };
     try {
       const options: ScheduleOptions = { startDate: this.startDate, workingDays: Number(this.workingDays), teamId: draft.teamId, workItemId: draft.workItemId };
-      const document = scheduleTask(this.store.document(), draft.id, options), task = document.tasks.find(t => t.id === draft.id)!;
+      const source = clone(this.store.document()), index = source.tasks.findIndex(t => t.id === draft.id);
+      if (index >= 0) source.tasks[index] = clone(draft);
+      const document = scheduleTask(source, draft.id, options), task = document.tasks.find(t => t.id === draft.id)!;
       const changed = document.tasks.filter(isScheduled).filter(t => t.id !== draft.id && this.store.document().tasks.some(o => o.id === t.id && (o.startDate !== t.startDate || o.endDate !== t.endDate))).map(t => t.title);
       return { document, start: task.startDate, end: task.endDate, changed };
     } catch (error) { return { error: (error as Error).message, changed: [] }; }

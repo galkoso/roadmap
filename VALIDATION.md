@@ -113,3 +113,15 @@
 ### תפריט פעולות למשימה — 2026-10-13
 
 נוספה ״העברה לבקלוג״ בתפריט שלוש הנקודות בכל שורת משימה. build ובדיקת TypeScript עברו. בדיקת Chromium ממוקדת עברה על הפלט הבנוי: פתיחה במקלדת, ביטול אישור ללא שינוי, העברה עם שמירת ID ופרטי המשימה ותלויות, הופעה בבקלוג, Undo בפעולה אחת, חסימה עם שמות צאצאים משובצים וסגירה ב־Escape.
+
+### הסתרת עבודות בבקלוג ויצירה ישירה — 2026-10-13
+
+התצוגה מסתירה עבודות שמכילות משימות אך אין בהן משימות משובצות. עבודה ריקה אמיתית נשארת גלויה. נוספה ״הוספה לבקלוג״ ביצירת עבודה ובהוספת משימה לעבודה קיימת; הבחירה מסירה את דרישת התאריכים ושומרת משימה ללא שדות תאריך. בדיקת הדפדפן החדשה מאמתת הסתרה לאחר העברת המשימה האחרונה, שחזור ב־Undo, יצירת עבודה בבקלוג ללא צוות, הוספת משימת בקלוג עם תלות בעבודה קיימת, הופעה בבקלוג ושחזור לאחר רענון.
+
+אימות סופי לשינוי: `pnpm build`, בדיקת TypeScript, 30 בדיקות יחידה ואינטגרציה ו־32 בדיקות Chromium עברו (הרצת הדפדפן הסופית: 38.8 שניות).
+
+### Backlog duration estimates - 2026-10-13
+
+Added optional `estimatedWorkingDays`. All backlog creation/edit paths accept 1-10,000 working days, display the estimate in the list and prefill scheduling. Returning to backlog captures the current inclusive working duration, including resized tasks. Older records without an estimate remain valid and display an unset duration.
+
+Final verification on the latest shared-workspace schema: production build, TypeScript check, 32 unit/integration tests and 33 Chromium tests passed. Tests cover invalid estimates, older records, backups, duration after resizing, all creation paths, editing, Undo/Redo, refresh, scheduling defaults and return to backlog. Schema assertions use `SCHEMA_VERSION` to preserve concurrent schema updates.

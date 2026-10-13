@@ -1,3 +1,4 @@
+import { SCHEMA_VERSION } from '../src/app/core/model';
 import 'fake-indexeddb/auto';
 import { IDBObjectStore } from 'fake-indexeddb';
 import { describe, expect, it, vi } from 'vitest';
@@ -56,6 +57,6 @@ it('migrates an existing IndexedDB document in one write and retains legacy data
   const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => { throw new DOMException('quota full', 'QuotaExceededError'); });
   await expect(db.save(migrated, initialPreferences(), 1)).rejects.toThrow(); put.mockRestore(); expect(await db.load()).toEqual(original);
   await db.save(migrated, initialPreferences(), 1);
-  const stored = await db.load(); expect(stored?.document.schemaVersion).toBe(2);
+  const stored = await db.load(); expect(stored?.document.schemaVersion).toBe(SCHEMA_VERSION);
   expect(stored?.document.tasks.map(({ planningState, ...task }) => task)).toEqual(legacy.tasks);
 });

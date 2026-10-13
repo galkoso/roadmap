@@ -6,11 +6,12 @@ import { Backup, clone, isScheduled, uid } from '../core/model';
 import { addDays, addYears, formatDate, isWorkingDay, nextWorkingDay, today } from '../core/dates';
 import { exportBackup, parseBackup } from '../core/validation';
 import { returnToBacklog, shiftWork, workRange } from '../core/scheduler';
+import { MembersDialogComponent } from './members-dialog.component';
 import { TimelineComponent } from './timeline.component';
 import { TaskEditorComponent } from './task-editor.component';
 import { CreateWorkDialogComponent } from './create-work-dialog.component';
 @Component({
-  selector: 'app-roadmap', standalone: true, imports: [FormsModule, TimelineComponent, TaskEditorComponent, CreateWorkDialogComponent], changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'app-roadmap', standalone: true, imports: [MembersDialogComponent, FormsModule, TimelineComponent, TaskEditorComponent, CreateWorkDialogComponent], changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './roadmap-page.component.html'
 })
 export class RoadmapPageComponent {
@@ -133,12 +134,17 @@ export class RoadmapPageComponent {
     const doc = clone(this.store.document()), teams = [...doc.teams].sort((a, b) => a.order - b.order), index = teams.findIndex(t => t.id === id), next = index + direction;
     if (next < 0 || next >= teams.length) return; [teams[index], teams[next]] = [teams[next], teams[index]]; teams.forEach((t, i) => t.order = i); this.store.commit(doc, 'סדר הצוותים עודכן');
   }
+  setGrouping(grouping: 'work' | 'people'): void {
+    this.timeline?.captureView(); this.store.setPreferences({ grouping });
+    if (this.selected()) this.timeline?.revealGrouping(this.selected()!);
+  }
   removeTeam(id: string): void {
     const doc = clone(this.store.document()), tasks = doc.tasks.filter(t => t.teamId === id), target = this.transfer[id];
+    if (doc.members.some(m => m.teamId === id)) { this.store.notice.set('יש להעביר או להסיר את אנשי הצוות דרך אנשי הצוותים לפני מחיקת הצוות'); return; }
     if (doc.teams.length === 1) { this.store.notice.set('חייב להישאר צוות אחד לפחות'); return; }
     if (tasks.length && (!target || target === id)) { this.store.notice.set('בחרו צוות שאליו יועברו המשימות לפני המחיקה'); return; }
     if (!confirm(`למחוק את הצוות? ${tasks.length} משימות יועברו לצוות שנבחר.`)) return;
-    for (const task of tasks) task.teamId = target; doc.teams = doc.teams.filter(t => t.id !== id); this.store.commit(doc, 'הצוות נמחק');
+    for (const task of tasks) { task.teamId = target; task.assigneeId = null; } doc.teams = doc.teams.filter(t => t.id !== id); this.store.commit(doc, 'הצוות נמחק');
   }
   teamTaskCount(id: string): number { return this.store.document().tasks.filter(t => t.teamId === id).length; }
   navigate(direction: number): void {

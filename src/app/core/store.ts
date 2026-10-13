@@ -1,6 +1,7 @@
 import { computed, Injectable, signal } from '@angular/core';
 import { Backup, clone, RoadmapDocument, SCHEMA_VERSION, ViewPreferences } from './model';
 import { initialPreferences, seedDocument } from './seed';
+import { assignTask, personKey } from './members';
 import { today } from './dates';
 import { RevisionConflict, RoadmapStorage } from './storage';
 import { validateDocument, validatePreferences } from './validation';
@@ -16,6 +17,7 @@ export class RoadmapStore {
   readonly error = signal('');
   readonly conflict = signal(false);
   readonly notice = signal('');
+  readonly assignmentFocus = signal<string | null>(null);
   readonly focusTaskId = signal<string | null>(null);
   readonly rawRecovery = signal<unknown>(null);
   readonly undoStack = signal<RoadmapDocument[]>([]);
@@ -48,7 +50,20 @@ export class RoadmapStore {
     this.undoStack.update(stack => [...stack.slice(-49), clone(this.document())]); this.redoStack.set([]);
     this.apply(next, message);
   }
+  assign(id: string, assigneeId: string | null): void {
+    try { this.commit(assignTask(this.document(), id, assigneeId), 'האחראי עודכן'); }
+    catch (error) { this.notice.set(this.message(error)); }
+  }
+  private openAssignmentGroups(next: RoadmapDocument): void {
+    const changed = next.tasks.filter(t => this.document().tasks.some(old => old.id === t.id && old.assigneeId !== t.assigneeId));
+    if (!changed.length) return;
+    const keys = changed.flatMap(t => t.teamId ? ['team:' + t.teamId, personKey(t.teamId, t.assigneeId ?? null)] : ['team:unassigned']);
+    this.preferences.update(p => ({ ...p, peopleCollapsed: (p.peopleCollapsed ?? []).filter(k => !keys.includes(k)),
+      backlog: p.backlog ? { ...p.backlog, peopleCollapsed: (p.backlog.peopleCollapsed ?? []).filter(k => !keys.includes(k)) } : undefined }));
+    this.assignmentFocus.set(changed[0].id);
+  }
   private apply(next: RoadmapDocument, message: string): void {
+    this.openAssignmentGroups(next);
     next.revision = this.document().revision; this.document.set(next); this.preview.set(null); this.notice.set(message); this.queueSave();
   }
   undo(): void {

@@ -1,17 +1,19 @@
 import { AfterViewInit, ChangeDetectorRef, ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, input, OnDestroy, output, signal, ViewChild } from '@angular/core';
+import { AssigneeFieldComponent } from './assignee-field.component';
+import { groupByPeople, personKey } from '../core/members';
 import { RoadmapStore } from '../core/store';
 import { clone, isScheduled, RoadmapDocument, ScheduledTask, Team, WorkItem } from '../core/model';
 import { addDays, daysBetween, duration, formatDate, isWorkingDay, monthLabel, nextWorkingDay, today } from '../core/dates';
 import { editTask, shiftTask, shiftWork, workRange } from '../core/scheduler';
 import { statuses } from '../core/model';
-interface Row { key: string; kind: 'team' | 'work' | 'task'; team: Team & { unassigned?: boolean }; independent?: boolean; work?: WorkItem; task?: ScheduledTask; start?: string; end?: string; shared?: boolean }
+interface Row { key: string; kind: 'team' | 'work' | 'person' | 'task'; personName?: string; initial?: string; count?: number; team: Team & { unassigned?: boolean }; independent?: boolean; work?: WorkItem; task?: ScheduledTask; start?: string; end?: string; shared?: boolean }
 interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' | 'start' | 'end'; base: RoadmapDocument; start: string; end: string; next: RoadmapDocument; moved: boolean }
 @Component({
-  selector: 'app-timeline', standalone: true, changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'app-timeline', standalone: true, imports: [AssigneeFieldComponent], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="timeline-caption"><span>{{ periodLabel() }}</span><span class="legend"><i></i> עבודה כוללת <b></b> סוף שבוע <span class="today-dot"></span> היום</span></div>
     <div #viewport class="timeline-viewport" (scroll)="onScroll()" aria-label="ציר הזמן; תאריכים מתקדמים משמאל לימין" tabindex="0">
-      <div class="timeline-canvas" [style.width.px]="width() + 320">
+      <div class="timeline-canvas" [style.width.px]="width() + 420">
         <div class="timeline-header">
           <div class="date-header" [style.width.px]="width()" [attr.data-range-start]="start()">
             <div class="month-band">@for (month of months(); track month.start) { <div [style.left.px]="x(month.start)" [style.width.px]="month.width">{{ month.label }}</div> }</div>
@@ -23,7 +25,7 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
           <div class="calendar-background" [style.width.px]="width()" [style.background-image]="background()"></div>
           @if (todayX() >= 0 && todayX() <= width()) { <div class="today-line" [style.left.px]="todayX()"><span>היום</span></div> }
           @for (row of rows(); track row.key) {
-            <div class="timeline-row" [class.team-row]="row.kind === 'team'" [class.work-row]="row.kind === 'work'" [class.selected]="row.task?.id === selected()">
+            <div class="timeline-row" [class.team-row]="row.kind === 'team'" [class.work-row]="row.kind === 'work'" [class.person-row]="row.kind === 'person'" [class.unassigned-person]="row.kind === 'person' && !row.initial" [class.assignment-highlight]="row.task?.id === highlighted()" [class.selected]="row.task?.id === selected()">
               <div class="lane" [style.width.px]="width()">
                 @if (row.start && row.end && intersects(row.start, row.end)) {
                   <button class="bar" [class.work-bar]="row.kind === 'work'" [class.task-bar]="row.kind === 'task'"
@@ -40,12 +42,14 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
               <div class="row-name" dir="rtl">
                 @if (row.kind === 'team') {
                   <button class="hierarchy team-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><i class="team-icon">{{ row.team.name.slice(-2, -1) }}</i>{{ row.team.name }}<small>{{ teamCount(row.team.id) }}</small></button>@if (!row.team.unassigned) { <button class="row-action team-name-edit" [attr.aria-label]="'שינוי שם הצוות ' + row.team.name" title="שינוי שם הצוות" (click)="editTeam.emit(row.team.id)">✎</button> }
+                } @else if (row.kind === 'person') {
+                  <button class="hierarchy person-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><span class="initial-avatar" aria-hidden="true">{{ row.initial ?? '–' }}</span><span class="name-text">{{ row.personName }}</span><small>{{ row.count }} משימות{{ row.count === 0 ? ' · אין משימות בציר' : '' }}</small></button>
                 } @else if (row.kind === 'work') {
                   <button class="hierarchy work-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><span class="name-text">{{ row.work!.title }}</span>@if (row.shared) { <span class="shared" title="עבודה משותפת">משותפת</span> }</button>
                   @if (!row.independent) { <div class="row-actions"><button class="row-action" aria-label="עריכת עבודה" (click)="editWork.emit(row.work!.id)">⋯</button><button class="row-action delete-action" [attr.aria-label]="'מחיקת עבודה ' + row.work!.title" title="מחיקת עבודה" (click)="deleteWork.emit(row.work!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div> }
                 } @else {
-                  <button class="task-name" (click)="selectTask.emit(row.task!.id)"><i [style.background]="row.task!.color"></i><span class="name-text">{{ row.task!.title }}<small>{{ status[row.task!.status] }}</small></span></button>
-                  <div class="row-actions"><button class="row-action" [attr.aria-label]="'פעולות משימה ' + row.task!.title" [attr.popovertarget]="'task-menu-' + row.task!.id" (click)="positionTaskMenu($event)">⋯</button>
+                  <button class="task-name" (click)="selectTask.emit(row.task!.id)"><i [style.background]="row.task!.color"></i><span class="name-text">{{ row.task!.title }}<small>{{ status[row.task!.status] }}@if (store.preferences().grouping === 'people') { · {{ row.work?.title ?? 'משימה עצמאית' }} }</small></span></button>
+                  <app-assignee-field [task]="row.task!" (changed)="store.assign(row.task!.id, $event)"/><div class="row-actions"><button class="row-action" [attr.aria-label]="'פעולות משימה ' + row.task!.title" [attr.popovertarget]="'task-menu-' + row.task!.id" (click)="positionTaskMenu($event)">⋯</button>
                     <div popover class="task-action-menu" [id]="'task-menu-' + row.task!.id" [style.top.px]="taskMenuPosition().top" [style.left.px]="taskMenuPosition().left">
                       <button (click)="taskMenuAction($event, row.task!.id, false)">עריכת משימה</button>
                       <button (click)="taskMenuAction($event, row.task!.id, true)">העברה לבקלוג</button>
@@ -87,15 +91,33 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   private resizeObserver?: ResizeObserver;
   private destroyed = false;
   readonly span = computed(() => Math.max(({ weeks: 42, months: 100, quarters: 366 })[this.store.preferences().mode],
-    Math.ceil(Math.max(0, this.viewportWidth() - 320) / this.store.preferences().dayWidth) * 2 + 14));
+    Math.ceil(Math.max(0, this.viewportWidth() - 420) / this.store.preferences().dayWidth) * 2 + 14));
   private layoutKey = ''; 
   readonly start = computed(() => addDays(this.windowCenter(), -Math.floor(this.span() / 2)));
   readonly width = computed(() => this.span() * this.store.preferences().dayWidth);
   readonly periodLabel = computed(() => `${formatDate(this.start())} — ${formatDate(addDays(this.start(), this.span() - 1))}`);
   readonly todayX = computed(() => this.x(today()) + this.store.preferences().dayWidth / 2);
+  readonly highlighted = signal<string | null>(null);
+  private highlightTimer?: ReturnType<typeof setTimeout>;
   readonly scheduledTasks = computed(() => this.store.visible().tasks.filter(isScheduled));
   readonly rows = computed<Row[]>(() => {
-    const doc = this.store.visible(), scheduled = this.scheduledTasks(), result: Row[] = [], collapsed = new Set(this.store.preferences().collapsed);
+    const doc = this.store.visible(), scheduled = this.scheduledTasks(), result: Row[] = [], collapsed = new Set(this.collapsedKeys());
+    if (this.store.preferences().grouping === 'people') {
+      for (const group of groupByPeople(doc, scheduled)) {
+        const team: Team & { unassigned?: boolean } = { id: group.teamId ?? '__unassigned__', name: group.name, order: 0, unassigned: group.teamId === null };
+        result.push({ key: group.key, kind: 'team', team });
+        if (collapsed.has(group.key)) continue;
+        const addTasks = (tasks: ScheduledTask[]) => {
+          for (const task of tasks) result.push({ key: task.id, kind: 'task', team, task, work: doc.workItems.find(w => w.id === task.workItemId), start: task.startDate, end: task.endDate });
+        };
+        if (group.teamId === null) addTasks(group.tasks);
+        else for (const person of group.groups) {
+          result.push({ key: person.key, kind: 'person', team, personName: person.name, initial: person.member?.name.slice(0, 1), count: person.tasks.length });
+          if (!collapsed.has(person.key)) addTasks(person.tasks);
+        }
+      }
+      return result;
+    }
     const populatedWorks = new Set(doc.tasks.map(t => t.workItemId));
     const workTasks = new Map<string, ScheduledTask[]>();
     for (const t of scheduled) if (t.workItemId) workTasks.set(t.workItemId, [...(workTasks.get(t.workItemId) ?? []), t]);
@@ -160,6 +182,13 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   }
   constructor() {
     effect(() => {
+      const id = this.store.assignmentFocus();
+      if (!id || !this.scheduledTasks().some(t => t.id === id)) return;
+      this.store.assignmentFocus.set(null); this.highlighted.set(id); clearTimeout(this.highlightTimer);
+      this.highlightTimer = setTimeout(() => this.highlighted.set(null), 2200);
+      this.revealGrouping(id);
+    });
+    effect(() => {
       const key = this.preferenceKey();
       if (key !== this.layoutKey) {
         this.layoutKey = key; this.windowCenter.set(this.store.preferences().timelineAnchor ?? this.store.preferences().center);
@@ -177,7 +206,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
     });
     this.resizeObserver.observe(this.viewport.nativeElement);
   }
-  ngOnDestroy(): void { this.destroyed = true; clearTimeout(this.scrollTimer); this.resizeObserver?.disconnect(); }
+  ngOnDestroy(): void { this.destroyed = true; clearTimeout(this.scrollTimer); clearTimeout(this.highlightTimer); this.resizeObserver?.disconnect(); }
   recenter(): void {
     clearTimeout(this.scrollTimer); this.windowCenter.set(this.store.preferences().center);
     setTimeout(() => this.position(), 0);
@@ -185,7 +214,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   position(center = this.store.preferences().center): void {
     if (!this.viewport || this.drag || this.destroyed) return; clearTimeout(this.scrollTimer); this.positioning = true;
     const el = this.viewport.nativeElement;
-    el.scrollLeft = this.store.preferences().scrollLeft ?? Math.max(0, this.x(center) + this.store.preferences().dayWidth / 2 - (el.clientWidth - 320) / 2);
+    el.scrollLeft = this.store.preferences().scrollLeft ?? Math.max(0, this.x(center) + this.store.preferences().dayWidth / 2 - (el.clientWidth - 420) / 2);
     el.scrollTop = this.store.preferences().scrollTop ?? 0;
     setTimeout(() => { this.positioning = false; }, 0);
   }
@@ -197,7 +226,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   onScroll(): void {
     if (this.positioning || this.drag || this.destroyed) return;
     const el = this.viewport.nativeElement, left = el.scrollLeft;
-    const chartWidth = Math.max(0, el.clientWidth - 320), max = this.width() - chartWidth;
+    const chartWidth = Math.max(0, el.clientWidth - 420), max = this.width() - chartWidth;
     const threshold = Math.min(chartWidth / 4, this.store.preferences().dayWidth * 7);
     const direction = left >= max - threshold ? 1 : left <= threshold ? -1 : 0;
     if (direction && max > 0) {
@@ -219,14 +248,12 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   visibleCenter(): string {
     if (!this.viewport) return this.store.preferences().center;
     const el = this.viewport.nativeElement;
-    return addDays(this.start(), Math.floor((el.scrollLeft + (el.clientWidth - 320) / 2) / this.store.preferences().dayWidth));
+    return addDays(this.start(), Math.floor((el.scrollLeft + (el.clientWidth - 420) / 2) / this.store.preferences().dayWidth));
   }
   revealTask(id: string): void {
     const task = this.store.document().tasks.find(t => t.id === id); if (!task || !isScheduled(task)) return;
     const team = task.teamId ?? '__unassigned__';
-    const teamKey = task.teamId ? 'team:' + task.teamId : 'team:unassigned';
-    const workKey = task.workItemId ? 'work:' + task.workItemId + ':' + team : 'independent:' + team;
-    this.store.setPreferences({ collapsed: this.store.preferences().collapsed.filter(key => key !== teamKey && key !== workKey) });
+    this.revealGrouping(id);
     this.goTo(task.startDate);
     setTimeout(() => {
       if (this.destroyed) return;
@@ -235,14 +262,31 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
       this.viewport.nativeElement.querySelector<HTMLElement>(`[data-testid="task-bar-${CSS.escape(id)}-${CSS.escape(team)}"]`)?.focus({ preventScroll: true });
     }, 30);
   }
+  revealGrouping(id: string): void {
+    const task = this.store.document().tasks.find(t => t.id === id); if (!task || !isScheduled(task)) return;
+    const team = task.teamId ?? '__unassigned__', teamKey = task.teamId ? 'team:' + task.teamId : 'team:unassigned';
+    const groupKey = this.store.preferences().grouping === 'people' ? personKey(team, task.assigneeId ?? null) : task.workItemId ? 'work:' + task.workItemId + ':' + team : 'independent:' + team;
+    const keys = this.collapsedKeys().filter(k => k !== teamKey && k !== groupKey);
+    this.store.setPreferences(this.store.preferences().grouping === 'people' ? { peopleCollapsed: keys } : { collapsed: keys });
+    setTimeout(() => {
+      if (!this.viewport || this.destroyed) return;
+      const index = this.rows().findIndex(row => row.task?.id === id), el = this.viewport.nativeElement;
+      const top = index * 48;
+      if (top < el.scrollTop + 70 || top > el.scrollTop + el.clientHeight - 48) el.scrollTop = Math.max(0, top - 70);
+    }, 0);
+  }
   x(date: string): number { return daysBetween(this.start(), date) * this.store.preferences().dayWidth; }
   barLeft(date: string): number { return Math.max(0, this.x(date)) + 2; }
   barWidth(start: string, end: string): number { return Math.max(8, Math.min(this.width(), this.x(addDays(end, 1))) - Math.max(0, this.x(start)) - 4); }
   intersects(start: string, end: string): boolean { return end >= this.start() && start < addDays(this.start(), this.span()); }
   shortDate(date: string): string { return `${date.slice(8)}.${date.slice(5, 7)}`; }
   barLabel(row: Row): string { return `${row.task?.title ?? row.work?.title}: ${formatDate(row.start!)} – ${formatDate(row.end!)}${row.task ? ' · ' + duration(row.start!, row.end!) + ' ימי עבודה' : ''}`; }
-  collapsed(key: string): boolean { return this.store.preferences().collapsed.includes(key); }
-  toggle(key: string): void { const keys = this.store.preferences().collapsed; this.store.setPreferences({ collapsed: keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key] }); }
+  collapsedKeys(): string[] { const p = this.store.preferences(); return p.grouping === 'people' ? p.peopleCollapsed ?? [] : p.collapsed; }
+  collapsed(key: string): boolean { return this.collapsedKeys().includes(key); }
+  toggle(key: string): void {
+    const keys = this.collapsedKeys(), collapsed = keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key];
+    this.store.setPreferences(this.store.preferences().grouping === 'people' ? { peopleCollapsed: collapsed } : { collapsed });
+  }
   teamCount(id: string): number { return this.scheduledTasks().filter(t => t.teamId === (id === '__unassigned__' ? null : id)).length; }
   goTo(date: string): void { this.store.setPreferences({ center: date, scrollLeft: undefined, timelineAnchor: undefined, scrollTop: 0 }); this.recenter(); }
   barClick(row: Row): void { if (this.suppressClick) { this.suppressClick = false; return; } if (row.task) this.selectTask.emit(row.task.id); else this.editWork.emit(row.work!.id); }

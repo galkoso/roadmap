@@ -7,6 +7,8 @@
     <div class="year-navigation" aria-label="ניווט שנתי"><button (click)="navigateYear(-1)" aria-label="שנה אחורה" title="מעבר שנה אחורה">שנה אחורה</button><button (click)="navigateYear(1)" aria-label="שנה קדימה" title="מעבר שנה קדימה">שנה קדימה</button></div>
     <div class="zoom"><button class="icon-button" aria-label="התקרבות" (click)="zoom(1)">＋</button><button class="icon-button" aria-label="התרחקות" (click)="zoom(-1)">−</button></div>
     <div class="history"><button class="icon-button" aria-label="ביטול שינוי" title="Undo · Ctrl+Z" [disabled]="!store.undoStack().length" (click)="store.undo(); closeEditor()">↶</button><button class="icon-button" aria-label="החזרת שינוי" title="Redo · Ctrl+Shift+Z" [disabled]="!store.redoStack().length" (click)="store.redo(); closeEditor()">↷</button></div>
+    <app-members-dialog/>
+    <label class="grouping-control">תצוגה<select aria-label="תצוגת Roadmap" [ngModel]="store.preferences().grouping ?? 'work'" (ngModelChange)="setGrouping($event)"><option value="work">לפי עבודות</option><option value="people">לפי אנשים</option></select></label>
     <button class="manage-teams" (click)="showPanel('teams')" [disabled]="!store.loaded()"><span aria-hidden="true">✎</span> עריכת צוותים</button>
     <span class="save-state" role="status" [class.failed]="!!store.error()"><i></i>{{ store.saveStatus() }}</span>
     <div class="menu-wrap"><button class="icon-button menu-button" aria-label="ניהול צוותים וגיבוי" [attr.aria-expanded]="menu()" (click)="menu.set(!menu())">⋯</button>@if (menu()) { <div class="dropdown"><button (click)="showPanel('teams')">ניהול צוותים</button><button (click)="showPanel('backup')">גיבוי ושחזור</button></div> }</div>

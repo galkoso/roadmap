@@ -21,6 +21,7 @@ import { addWorkingDays, formatDate, nextWorkingDay, today, validateRange } from
           <p class="field-hint">תיווצר משימה ראשונה לתקופה זו בצוות שנבחר. אפשר לערוך אותה ולהוסיף משימות בהמשך.</p>
         } @else if (backlog) {
           <label>צוות אחראי<select name="backlog-team" [(ngModel)]="teamId" aria-label="צוות אחראי"><option value="">ללא צוות</option>@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
+          <label>משך משוער בימי עבודה<input type="number" name="create-backlog-days" [(ngModel)]="workingDays" min="1" max="10000" step="1" dir="ltr" required></label>
           <p class="field-hint">תיווצר משימה בבקלוג, ללא תאריכים. העבודה לא תופיע בציר הזמן עד לשיבוץ משימה.</p>
         } @else { <p class="field-hint">העבודה תתווסף ללא פס זמן. אפשר להוסיף לה משימות בהמשך.</p> }
         @if (error) { <p class="field-error" role="alert">{{ error }}</p> }
@@ -57,17 +58,18 @@ export class CreateWorkDialogComponent {
   save(): void {
     this.error = ''; if (!this.title.trim()) { this.error = 'יש להזין כותרת עבודה'; return; }
     if (!this.store.loaded() || this.store.importing()) return;
+    if (this.backlog && (!Number.isSafeInteger(this.workingDays) || Number(this.workingDays) < 1 || Number(this.workingDays) > 10000)) { this.error = 'משך משוער חייב להיות מספר שלם בין 1 ל־10,000 ימי עבודה'; return; }
     if (this.scheduled && !this.backlog) { this.checkSchedule(); if (this.scheduleError) return; }
     try {
       const doc = clone(this.store.document()), id = uid(), title = this.title.trim();
       if (((this.scheduled && !this.backlog) || (this.backlog && this.teamId)) && !doc.teams.some(t => t.id === this.teamId)) throw new Error('יש לבחור צוות אחראי');
       doc.workItems.push({ id, title, order: Math.max(-1, ...doc.workItems.map(w => w.order)) + 1 });
       if (this.backlog) doc.tasks.push({
-        planningState: 'backlog', id: uid(), workItemId: id, teamId: this.teamId || null, title,
+        assigneeId: null, planningState: 'backlog', estimatedWorkingDays: Number(this.workingDays), id: uid(), workItemId: id, teamId: this.teamId || null, title,
         color: palette[0], status: 'planned', notes: '', order: 0
       });
       else if (this.scheduled) doc.tasks.push({
-        planningState: 'scheduled', id: uid(), workItemId: id, teamId: this.teamId, title, startDate: this.startDate, endDate: this.endDate(),
+        assigneeId: null, planningState: 'scheduled', id: uid(), workItemId: id, teamId: this.teamId, title, startDate: this.startDate, endDate: this.endDate(),
         color: palette[0], status: 'planned', notes: '', order: 0
       });
       this.store.commit(doc, this.backlog ? 'העבודה והמשימה נוספו לבקלוג' : this.scheduled ? `העבודה נוצרה · ${this.workingDays} ימי עבודה · סיום ${this.endLabel()}` : 'העבודה נוספה ללא משימות');
