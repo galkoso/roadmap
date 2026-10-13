@@ -56,6 +56,10 @@ export class RoadmapPageComponent {
   }
   selectTask(id: string): void { this.selected.set(id); this.newTaskWork.set(null); this.panel.set(null); }
   closeEditor(): void { this.selected.set(null); this.newTaskWork.set(null); }
+  editWorkItem(id: string): void {
+    const work = this.store.document().workItems.find(w => w.id === id);
+    if (work?.teamId === undefined) this.openWork(id); else this.createDialog?.open(undefined, id);
+  }
   openWork(id: string): void {
     this.workId = id; this.workTitle = this.store.document().workItems.find(w => w.id === id)?.title ?? '';
     this.workStart = id ? workRange(this.store.document(), id)?.startDate ?? '' : ''; this.workError = '';

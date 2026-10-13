@@ -11,7 +11,7 @@ async function create(page: Page, title: string, options?: { team?: string; work
   await page.getByRole('button', { name: 'פריט לבקלוג' }).click();
   const dialog = page.getByRole('dialog', { name: 'פריט לבקלוג', exact: true }); await dialog.getByLabel('כותרת הפריט').fill(title);
   if (options?.team) await dialog.getByLabel('צוות', { exact: true }).selectOption({ label: options.team });
-  if (options?.work) await dialog.getByLabel('עבודה קשורה', { exact: true }).selectOption({ label: options.work });
+  if (options?.work) await dialog.getByLabel('כותרת', { exact: true }).selectOption({ label: options.work });
   if (options?.notes) await dialog.getByLabel('תיאור / הערות').fill(options.notes);
   await dialog.getByRole('button', { name: 'שמירת פריט', exact: true }).click(); await expect(dialog).not.toBeVisible();
   await expect.poll(async () => (await planning(page)).document.tasks.some((t: any) => t.title === title)).toBe(true); await saved(page);
