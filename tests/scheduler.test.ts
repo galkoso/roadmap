@@ -118,3 +118,11 @@ it('calendar fast paths match a day-by-day oracle for every weekday, including w
   }
   expect(() => addWorkingDays('2026-10-11', Number.MAX_SAFE_INTEGER + 1)).toThrow();
 });
+it('year navigation preserves the calendar day and clamps leap day without altering schedules', async () => {
+  const { addYears } = await import('../src/app/core/dates');
+  expect(addYears('2026-10-13', 1)).toBe('2027-10-13');
+  expect(addYears('2026-10-13', -1)).toBe('2025-10-13');
+  expect(addYears('2024-02-29', 1)).toBe('2025-02-28');
+  expect(addYears('2024-02-29', -1)).toBe('2023-02-28');
+  expect(addYears('2024-02-29', 4)).toBe('2028-02-29');
+});

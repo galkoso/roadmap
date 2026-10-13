@@ -1,6 +1,7 @@
 import { computed, Injectable, signal } from '@angular/core';
-import { Backup, clone, RoadmapDocument, ViewPreferences } from './model';
+import { Backup, clone, RoadmapDocument, SCHEMA_VERSION, ViewPreferences } from './model';
 import { initialPreferences, seedDocument } from './seed';
+import { today } from './dates';
 import { RevisionConflict, RoadmapStorage } from './storage';
 import { validateDocument, validatePreferences } from './validation';
 @Injectable({ providedIn: 'root' })
@@ -15,6 +16,8 @@ export class RoadmapStore {
   readonly error = signal('');
   readonly conflict = signal(false);
   readonly notice = signal('');
+  readonly focusTaskId = signal<string | null>(null);
+  readonly rawRecovery = signal<unknown>(null);
   readonly undoStack = signal<RoadmapDocument[]>([]);
   readonly redoStack = signal<RoadmapDocument[]>([]);
   private storage = new RoadmapStorage();
@@ -26,12 +29,13 @@ export class RoadmapStore {
   private async initialize(): Promise<void> {
     try {
       const saved = await this.storage.load();
+      if (saved) this.rawRecovery.set(saved);
       if (saved) {
-        this.document.set(validateDocument(saved.document)); this.preferences.set(validatePreferences(saved.preferences));
-        this.persistedRevision = saved.document.revision; this.saveStatus.set('נשמר');
+        this.document.set(validateDocument(saved.document)); this.preferences.set({ ...validatePreferences(saved.preferences), center: today(), scrollLeft: undefined, timelineAnchor: undefined, scrollTop: 0 });
+        this.persistedRevision = saved.document.revision; this.saveStatus.set(saved.document.schemaVersion === SCHEMA_VERSION ? 'נשמר' : 'מעדכן סכימה...'); this.rawRecovery.set(null);
       }
       this.loaded.set(true);
-      if (!saved) this.queueSave();
+      if (!saved || saved.document.schemaVersion !== SCHEMA_VERSION) this.queueSave();
     } catch (error) {
       this.failed = true; this.error.set('לא ניתן לטעון תכנון מקומי. לא נכתב או הוחלף מידע. ' + this.message(error));
       this.saveStatus.set('תקלה בטעינה');

@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, input, output, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, input, OnDestroy, output, signal, ViewChild } from '@angular/core';
 import { RoadmapStore } from '../core/store';
 import { clone, RoadmapDocument, Task, Team, WorkItem } from '../core/model';
 import { addDays, daysBetween, duration, formatDate, isWorkingDay, monthLabel, nextWorkingDay, today } from '../core/dates';
@@ -13,7 +13,7 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
     <div #viewport class="timeline-viewport" (scroll)="onScroll()" aria-label="ציר הזמן; תאריכים מתקדמים משמאל לימין" tabindex="0">
       <div class="timeline-canvas" [style.width.px]="width() + 320">
         <div class="timeline-header">
-          <div class="date-header" [style.width.px]="width()">
+          <div class="date-header" [style.width.px]="width()" [attr.data-range-start]="start()">
             <div class="month-band">@for (month of months(); track month.start) { <div [style.left.px]="x(month.start)" [style.width.px]="month.width">{{ month.label }}</div> }</div>
             <div class="day-band">@for (tick of ticks(); track tick.date) { <div [style.left.px]="x(tick.date)" [style.width.px]="tick.width" [class.weekend]="!working(tick.date)"><span>{{ tick.label }}</span></div> }</div>
           </div>
@@ -39,13 +39,13 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
               </div>
               <div class="row-name" dir="rtl">
                 @if (row.kind === 'team') {
-                  <button class="hierarchy team-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><i class="team-icon">{{ row.team.name.slice(-2, -1) }}</i>{{ row.team.name }}<small>{{ teamCount(row.team.id) }}</small></button>
+                  <button class="hierarchy team-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><i class="team-icon">{{ row.team.name.slice(-2, -1) }}</i>{{ row.team.name }}<small>{{ teamCount(row.team.id) }}</small></button><button class="row-action team-name-edit" [attr.aria-label]="'שינוי שם הצוות ' + row.team.name" title="שינוי שם הצוות" (click)="editTeam.emit(row.team.id)">✎</button>
                 } @else if (row.kind === 'work') {
                   <button class="hierarchy work-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><span class="name-text">{{ row.work!.title }}</span>@if (row.shared) { <span class="shared" title="עבודה משותפת">משותפת</span> }</button>
-                  <button class="row-action" aria-label="עריכת עבודה" (click)="editWork.emit(row.work!.id)">⋯</button>
+                  <div class="row-actions"><button class="row-action" aria-label="עריכת עבודה" (click)="editWork.emit(row.work!.id)">⋯</button><button class="row-action delete-action" [attr.aria-label]="'מחיקת עבודה ' + row.work!.title" title="מחיקת עבודה" (click)="deleteWork.emit(row.work!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div>
                 } @else {
                   <button class="task-name" (click)="selectTask.emit(row.task!.id)"><i [style.background]="row.task!.color"></i><span class="name-text">{{ row.task!.title }}<small>{{ status[row.task!.status] }}</small></span></button>
-                  @if (!intersects(row.start!, row.end!)) { <button class="row-action" aria-label="ניווט למשימה" title="ניווט למשימה" (click)="goTo(row.start!)">↗</button> }
+                  <div class="row-actions">@if (!intersects(row.start!, row.end!)) { <button class="row-action" aria-label="ניווט למשימה" title="ניווט למשימה" (click)="goTo(row.start!)">↗</button> }<button class="row-action delete-action" [attr.aria-label]="'מחיקת משימה ' + row.task!.title" title="מחיקת משימה" (click)="deleteTask.emit(row.task!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div>
                 }
               </div>
             </div>
@@ -57,19 +57,26 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
         </div>
       </div>
     </div>
-    <div class="timeline-footer"><span>גררו פס להזזה · קצוות משימה לשינוי משך · Escape לביטול</span><span>{{ rows().length }} שורות מוצגות</span></div>
+    <div class="timeline-footer"><span>גללו ימינה ושמאלה להמשך התכנון · גררו פס להזזה · Escape לביטול</span><span>{{ rows().length }} שורות מוצגות</span></div>
   `
 })
-export class TimelineComponent implements AfterViewInit {
+export class TimelineComponent implements AfterViewInit, OnDestroy {
   readonly store = inject(RoadmapStore);
+  private readonly changeDetector = inject(ChangeDetectorRef);
   readonly selected = input<string | null>(null);
-  readonly selectTask = output<string>(); readonly editWork = output<string>();
+  readonly deleteTask = output<string>(); readonly deleteWork = output<string>();
+  readonly selectTask = output<string>(); readonly editWork = output<string>(); readonly editTeam = output<string>();
   @ViewChild('viewport') viewport!: ElementRef<HTMLDivElement>;
   readonly status = statuses; readonly working = isWorkingDay;
   private drag: Drag | null = null; private suppressClick = false; private scrollTimer?: ReturnType<typeof setTimeout>; private positioning = false;
-  readonly span = computed(() => ({ weeks: 42, months: 100, quarters: 366 })[this.store.preferences().mode]);
+  private readonly windowCenter = signal(today());
+  private readonly viewportWidth = signal(0);
+  private resizeObserver?: ResizeObserver;
+  private destroyed = false;
+  readonly span = computed(() => Math.max(({ weeks: 42, months: 100, quarters: 366 })[this.store.preferences().mode],
+    Math.ceil(Math.max(0, this.viewportWidth() - 320) / this.store.preferences().dayWidth) * 2 + 14));
   private layoutKey = ''; 
-  readonly start = computed(() => addDays(this.store.preferences().center, -Math.floor(this.span() / 2)));
+  readonly start = computed(() => addDays(this.windowCenter(), -Math.floor(this.span() / 2)));
   readonly width = computed(() => this.span() * this.store.preferences().dayWidth);
   readonly periodLabel = computed(() => `${formatDate(this.start())} — ${formatDate(addDays(this.start(), this.span() - 1))}`);
   readonly todayX = computed(() => this.x(today()) + this.store.preferences().dayWidth / 2);
@@ -110,8 +117,8 @@ export class TimelineComponent implements AfterViewInit {
   readonly background = computed(() => {
     if (this.store.preferences().mode === 'quarters') return 'none';
     const width = this.store.preferences().dayWidth, stops: string[] = [];
-    for (let i = 0; i < this.span(); i++) if (!isWorkingDay(addDays(this.start(), i))) stops.push(`transparent ${i * width}px, #f1f4f8 ${i * width}px, #f1f4f8 ${(i + 1) * width}px, transparent ${(i + 1) * width}px`);
-    return `linear-gradient(to right, ${stops.join(', ')}), repeating-linear-gradient(to right, transparent 0, transparent ${width - 1}px, #e9edf3 ${width - 1}px, #e9edf3 ${width}px)`;
+    for (let i = 0; i < this.span(); i++) if (!isWorkingDay(addDays(this.start(), i))) stops.push(`transparent ${i * width}px, var(--weekend) ${i * width}px, var(--weekend) ${(i + 1) * width}px, transparent ${(i + 1) * width}px`);
+    return `linear-gradient(to right, ${stops.join(', ')}), repeating-linear-gradient(to right, transparent 0, transparent ${width - 1}px, var(--grid) ${width - 1}px, var(--grid) ${width}px)`;
   });
   readonly lines = computed(() => {
     const selected = this.selected(); if (!selected) return [];
@@ -123,20 +130,65 @@ export class TimelineComponent implements AfterViewInit {
       return [{ key: d.id, path: `M ${x1} ${y1} H ${x1 + 12} V ${y2} H ${x2}` }];
     });
   });
-  constructor() { effect(() => { const p = this.store.preferences(); const key = p.mode + ':' + p.dayWidth + ':' + p.center; if (key !== this.layoutKey) { this.layoutKey = key; setTimeout(() => this.position(), 0); } }); }
-  ngAfterViewInit(): void { this.position(); }
-  position(): void {
-    if (!this.viewport || this.drag) return; clearTimeout(this.scrollTimer); this.positioning = true;
-    const el = this.viewport.nativeElement; el.scrollLeft = this.store.preferences().scrollLeft ?? Math.max(0, this.width() / 2 - (el.clientWidth - 320) / 2);
+  private preferenceKey(center = this.store.preferences().center): string {
+    const p = this.store.preferences(); return `${p.mode}:${p.dayWidth}:${center}`;
+  }
+  constructor() {
+    effect(() => {
+      const key = this.preferenceKey();
+      if (key !== this.layoutKey) {
+        this.layoutKey = key; this.windowCenter.set(this.store.preferences().center);
+        setTimeout(() => this.position(), 0);
+      }
+    });
+  }
+  ngAfterViewInit(): void {
+    this.viewportWidth.set(this.viewport.nativeElement.clientWidth);
+    this.changeDetector.detectChanges(); this.position();
+    this.resizeObserver = new ResizeObserver(() => {
+      const width = this.viewport.nativeElement.clientWidth; if (width === this.viewportWidth()) return;
+      const center = this.visibleCenter(); this.windowCenter.set(center); this.viewportWidth.set(width);
+      this.changeDetector.detectChanges(); this.position(center);
+    });
+    this.resizeObserver.observe(this.viewport.nativeElement);
+  }
+  ngOnDestroy(): void { this.destroyed = true; clearTimeout(this.scrollTimer); this.resizeObserver?.disconnect(); }
+  recenter(): void {
+    clearTimeout(this.scrollTimer); this.windowCenter.set(this.store.preferences().center);
+    setTimeout(() => this.position(), 0);
+  }
+  position(center = this.store.preferences().center): void {
+    if (!this.viewport || this.drag || this.destroyed) return; clearTimeout(this.scrollTimer); this.positioning = true;
+    const el = this.viewport.nativeElement;
+    el.scrollLeft = this.store.preferences().scrollLeft ?? Math.max(0, this.x(center) + this.store.preferences().dayWidth / 2 - (el.clientWidth - 320) / 2);
     setTimeout(() => { this.positioning = false; }, 0);
   }
   onScroll(): void {
-    if (this.positioning || this.drag) return; clearTimeout(this.scrollTimer); this.scrollTimer = setTimeout(() => this.store.setPreferences({ scrollLeft: this.viewport.nativeElement.scrollLeft }), 250);
+    if (this.positioning || this.drag || this.destroyed) return;
+    const el = this.viewport.nativeElement, left = el.scrollLeft;
+    const chartWidth = Math.max(0, el.clientWidth - 320), max = this.width() - chartWidth;
+    const threshold = Math.min(chartWidth / 4, this.store.preferences().dayWidth * 7);
+    const direction = left >= max - threshold ? 1 : left <= threshold ? -1 : 0;
+    if (direction && max > 0) {
+      // Keep a bounded date window and compensate its origin shift before painting.
+      // The same date stays under the pointer; task dates and row identities never change.
+      const shift = direction * Math.floor(this.span() / 3);
+      this.positioning = true; this.windowCenter.update(center => addDays(center, shift));
+      this.changeDetector.detectChanges(); el.scrollLeft = left - shift * this.store.preferences().dayWidth;
+      setTimeout(() => { this.positioning = false; }, 0);
+    }
+    clearTimeout(this.scrollTimer);
+    this.scrollTimer = setTimeout(() => {
+      const center = this.visibleCenter(); this.layoutKey = this.preferenceKey(center);
+      const preferences = this.store.preferences();
+      if (center === preferences.center && preferences.scrollLeft === undefined) return;
+      this.store.setPreferences({ center, scrollLeft: undefined });
+    }, 250);
   }
   visibleCenter(): string {
     if (!this.viewport) return this.store.preferences().center;
     const el = this.viewport.nativeElement;
-    return addDays(this.start(), Math.round((el.scrollLeft + (el.clientWidth - 320) / 2) / this.store.preferences().dayWidth));
+    return addDays(this.start(), Math.floor((el.scrollLeft + (el.clientWidth - 320) / 2) / this.store.preferences().dayWidth));
   }
   x(date: string): number { return daysBetween(this.start(), date) * this.store.preferences().dayWidth; }
   barLeft(date: string): number { return Math.max(0, this.x(date)) + 2; }
@@ -147,7 +199,7 @@ export class TimelineComponent implements AfterViewInit {
   collapsed(key: string): boolean { return this.store.preferences().collapsed.includes(key); }
   toggle(key: string): void { const keys = this.store.preferences().collapsed; this.store.setPreferences({ collapsed: keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key] }); }
   teamCount(id: string): number { return this.store.visible().tasks.filter(t => t.teamId === id).length; }
-  goTo(date: string): void { this.store.setPreferences({ center: date, scrollLeft: undefined }); }
+  goTo(date: string): void { this.store.setPreferences({ center: date, scrollLeft: undefined }); this.recenter(); }
   barClick(row: Row): void { if (this.suppressClick) { this.suppressClick = false; return; } if (row.task) this.selectTask.emit(row.task.id); else this.editWork.emit(row.work!.id); }
   begin(event: PointerEvent, row: Row, kind: Drag['kind']): void {
     if (event.button !== 0 || (!this.store.loaded() || this.store.importing())) return; event.preventDefault(); event.stopPropagation();

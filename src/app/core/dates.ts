@@ -8,6 +8,16 @@ export function epoch(date: string): number {
 }
 export const iso = (day: number): string => new Date(day * DAY).toISOString().slice(0, 10);
 export const addDays = (date: string, amount: number): string => iso(epoch(date) + amount);
+export function addYears(date: string, amount: number): string {
+  epoch(date);
+  if (!Number.isSafeInteger(amount)) throw new Error('מספר השנים חייב להיות שלם');
+  const [year, month, day] = date.split('-').map(Number);
+  const first = `${String(year + amount).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
+  epoch(first);
+  const nextMonth = new Date(first + 'T00:00:00Z'); nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+  const lastDay = Number(addDays(nextMonth.toISOString().slice(0, 10), -1).slice(8));
+  return first.slice(0, 8) + String(Math.min(day, lastDay)).padStart(2, '0');
+}
 export const daysBetween = (from: string, to: string): number => epoch(to) - epoch(from);
 export const isWorkingDay = (date: string): boolean => ![5, 6].includes(new Date(epoch(date) * DAY).getUTCDay());
 export function nextWorkingDay(date: string): string {

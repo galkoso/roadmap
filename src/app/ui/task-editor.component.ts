@@ -34,7 +34,7 @@ import { editTask, setIncoming } from '../core/scheduler';
 })
 export class TaskEditorComponent {
   readonly store = inject(RoadmapStore); readonly taskId = input<string | null>(null); readonly workId = input<string | null>(null);
-  readonly newTask = input(false); readonly close = output<void>(); readonly colors = palette; readonly formatted = formatDate;
+  readonly newTask = input(false); readonly close = output<void>(); readonly deleteTask = output<string>(); readonly colors = palette; readonly formatted = formatDate;
   draft: Task | null = null; incoming: Dependency[] = []; error = ''; dateError = ''; private original: Task | null = null; private originalIncoming: Dependency[] = [];
   constructor() {
     effect(() => {
@@ -81,10 +81,5 @@ export class TaskEditorComponent {
       this.store.commit(doc, `המשימה נשמרה${snapped ? ' · הוצמדה למועד חוקי: ' + formatDate(actual.startDate) : ''}${changed.length ? ' · עודכנו: ' + changed.join(', ') : ''}`); this.close.emit();
     } catch (error) { this.error = (error as Error).message; }
   }
-  remove(): void {
-    if (!this.draft || !confirm(`למחוק את ״${this.draft.title}״ ואת קשרי התלות שלה? יתר המשימות לא יזוזו.`)) return;
-    const doc = clone(this.store.document()), id = this.draft.id;
-    doc.tasks = doc.tasks.filter(t => t.id !== id); doc.dependencies = doc.dependencies.filter(d => d.predecessorId !== id && d.successorId !== id);
-    this.store.commit(doc, 'המשימה וקשריה נמחקו'); this.close.emit();
-  }
+  remove(): void { if (this.draft) this.deleteTask.emit(this.draft.id); }
 }

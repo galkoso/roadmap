@@ -85,7 +85,7 @@ test('two tabs refuse stale writes and offer reload while preserving in-memory b
   await second.getByRole('button', { name: 'הוספת עבודה' }).click(); await second.getByLabel('כותרת העבודה').fill('שינוי ישן'); await second.getByRole('button', { name: 'שמירת עבודה' }).click();
   await expect(second.getByRole('alert')).toContainText('בלשונית אחרת'); await expect(second.locator('.save-state')).not.toHaveText('נשמר');
   expect((await planning(page)).document.workItems.some((w: any) => w.title === 'שינוי ישן')).toBe(false);
-  await second.getByRole('button', { name: 'טעינת הגרסה המקומית החדשה' }).click(); await saved(second); await expect(second.getByRole('button', { name: /תכנון מהלשונית הראשונה/ })).toBeVisible();
+  await second.getByRole('button', { name: 'טעינת הגרסה המקומית החדשה' }).click(); await saved(second); await expect(second.locator('.work-title').filter({ hasText: 'תכנון מהלשונית הראשונה' })).toBeVisible();
 });
 test('zoom and out-of-range navigation preserve dates; sticky dates and narrow layout', async ({ page }) => {
   const before = await planning(page); await page.getByRole('button', { name: 'התקרבות', exact: true }).click(); await page.getByRole('button', { name: 'תקופה הבאה' }).click(); await saved(page);
@@ -96,7 +96,7 @@ test('zoom and out-of-range navigation preserve dates; sticky dates and narrow l
   await page.setViewportSize({ width: 560, height: 900 }); await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   expect(await page.locator('.timeline-viewport').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
 });
-test('visual preview capture', async ({ page }) => { await page.screenshot({ path: 'test-results/roadmap-desktop.png', fullPage: true }); });
+test('dark mode visual preview capture', async ({ page }) => { await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark'); await page.screenshot({ path: 'test-results/roadmap-desktop.png', fullPage: true }); });
 test('rename a shared work updates three projections; cycle is rejected atomically and dependency names remain available when collapsed', async ({ page }) => {
   await page.getByRole('button', { name: 'עריכת עבודה', exact: true }).first().click(); await page.getByLabel('כותרת העבודה').fill('תשתית משותפת מעודכנת'); await page.getByRole('button', { name: 'שמירת עבודה' }).click(); await saved(page);
   await expect(page.locator('.work-title').filter({ hasText: 'תשתית משותפת מעודכנת' })).toHaveCount(3); expect((await planning(page)).document.workItems.length).toBe(2);
@@ -107,7 +107,7 @@ test('rename a shared work updates three projections; cycle is rejected atomical
   await expect(page.locator('.dependency-picker')).toContainText('תכנון הארכיטקטורה'); await expect(page.locator('.dependency-lines path[marker-end]')).toHaveCount(1);
 });
 test('create empty work and its first one-day task, then delete without affecting independent planning', async ({ page }) => {
-  await page.getByRole('button', { name: 'הוספת עבודה' }).click(); await page.getByLabel('כותרת העבודה').fill('עבודה ריקה'); await page.getByRole('button', { name: 'שמירת עבודה' }).click(); await saved(page);
+  await page.getByRole('button', { name: 'הוספת עבודה' }).click(); await page.getByLabel('כותרת העבודה').fill('עבודה ריקה'); await page.getByRole('checkbox', { name: 'להגדיר תקופה לעבודה' }).uncheck(); await page.getByRole('button', { name: 'שמירת עבודה' }).click(); await saved(page);
   const empty = await planning(page), work = empty.document.workItems.find((w: any) => w.title === 'עבודה ריקה'); await expect(page.getByTestId(`work-bar-${work.id}-team-a`)).toHaveCount(0);
   await page.locator('.work-row').filter({ hasText: 'עבודה ריקה' }).getByRole('button', { name: 'עריכת עבודה' }).click(); await page.getByRole('button', { name: 'הוספת משימה', exact: false }).click();
   await page.getByLabel('שם המשימה', { exact: true }).fill('משימה קצרה'); await page.getByRole('button', { name: 'הוספת משימה', exact: true }).click(); await saved(page);
@@ -117,11 +117,13 @@ test('create empty work and its first one-day task, then delete without affectin
   expect((await planning(page)).document.tasks).toEqual(empty.document.tasks);
 });
 test('team creation, rename, order and delete with explicit task transfer preserve dates and dependencies', async ({ page }) => {
-  const before = await planning(page); await page.getByRole('button', { name: 'ניהול צוותים וגיבוי' }).click(); await page.getByRole('button', { name: 'ניהול צוותים', exact: true }).click();
+  const before = await planning(page); await page.getByRole('button', { name: 'שינוי שם הצוות צוות א׳', exact: true }).click();
+  const nameInput = page.getByLabel('שם צוות א׳', { exact: true }); await expect(nameInput).toBeFocused(); await nameInput.fill('צוות תשתיות'); await nameInput.press('Enter');
+  await expect.poll(async () => (await planning(page)).document.teams[0].name).toBe('צוות תשתיות');
   await page.getByLabel('צוות חדש').fill('צוות ד׳'); await page.getByRole('button', { name: 'הוספת צוות', exact: true }).click(); await saved(page);
   const row = page.locator('.team-edit-row').filter({ has: page.getByLabel('שם צוות ד׳', { exact: true }) });
   await row.getByRole('button', { name: 'העברת צוות למעלה' }).click(); await saved(page);
-  const first = page.locator('.team-edit-row').filter({ has: page.getByLabel('שם צוות א׳', { exact: true }) });
+  const first = page.locator('.team-edit-row').filter({ has: page.getByLabel('שם צוות תשתיות', { exact: true }) });
   await first.locator('select').selectOption('team-b'); page.once('dialog', dialog => dialog.accept()); await first.getByRole('button', { name: 'מחיקה', exact: true }).click(); await saved(page);
   const changed = await planning(page); expect(changed.document.tasks[0].teamId).toBe('team-b'); expect(changed.document.tasks[0].startDate).toBe(before.document.tasks[0].startDate); expect(changed.document.dependencies).toEqual(before.document.dependencies);
   expect(changed.document.teams.some((t: any) => t.id === 'team-a')).toBe(false);
@@ -148,10 +150,131 @@ test('300-task browser render, vertical sticky dates, stable row DOM during prev
   expect(await page.evaluate(() => (window as any).__firstRow === document.querySelector('[data-testid="task-bar-load-task-0-team-a"]')?.closest('.timeline-row'))).toBe(true); await page.keyboard.press('Escape'); await page.mouse.up();
   await context.setOffline(true); await page.getByRole('button', { name: 'התקרבות', exact: true }).click(); await saved(page); expect((await planning(page)).document.tasks.length).toBe(300);
 });
-test('horizontal scroll, period and zoom survive reload; left resize keeps end and pointer cancellation restores preview', async ({ page }) => {
+test('reload returns to today; left resize keeps end and pointer cancellation restores preview', async ({ page }) => {
   const before = await planning(page); await drag(page, architecture, 28, false, 'start'); await saved(page); const resized = await planning(page);
   expect(resized.document.tasks[0].endDate).toBe(before.document.tasks[0].endDate); expect(resized.document.tasks[0].startDate).not.toBe(before.document.tasks[0].startDate); expect(resized.document.tasks[1]).toEqual(before.document.tasks[1]);
   const bar = page.getByTestId(architecture), box = await bar.boundingBox(); await page.mouse.move(box!.x + box!.width / 2, box!.y + 12); await page.mouse.down(); await page.mouse.move(box!.x + box!.width / 2 + 28, box!.y + 12); await page.evaluate(() => document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }))); await page.mouse.up(); expect((await planning(page)).document.tasks).toEqual(resized.document.tasks);
-  await page.locator('.timeline-viewport').evaluate(el => el.scrollLeft += 125); const left = await page.locator('.timeline-viewport').evaluate(el => el.scrollLeft); await expect.poll(async () => (await planning(page)).preferences.scrollLeft).toBe(left);
-  await page.reload(); await saved(page); await expect.poll(() => page.locator('.timeline-viewport').evaluate(el => el.scrollLeft)).toBe(left);
+  await page.locator('.timeline-viewport').evaluate(el => el.scrollLeft += 125); const centeredDate = await page.locator('.timeline-viewport').evaluate(el => { const ticks = el.querySelectorAll('.day-band > div'); const box = el.getBoundingClientRect(), x = box.x + (el.clientWidth - 320) / 2; return Array.from(ticks).find(t => { const rect = t.getBoundingClientRect(); return rect.left <= x && rect.right > x; })?.textContent; });
+  await expect.poll(async () => Number((await planning(page)).preferences.center.slice(8))).toBe(Number(centeredDate));
+  await page.reload(); await saved(page); await expect.poll(async () => page.locator('.timeline-viewport').evaluate(el => { const line = el.querySelector('.today-line')!.getBoundingClientRect(); const box = el.getBoundingClientRect(); return Math.abs(line.x - (box.x + (el.clientWidth - 320) / 2)); })).toBeLessThan(3);
+});
+test('timeline delete buttons confirm, remove only related data, and undo restores shared missions', async ({ page }) => {
+  const before = await planning(page);
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', { name: 'מחיקת משימה מימוש השירותים', exact: true }).click();
+  expect((await planning(page)).document).toEqual(before.document);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'מחיקת משימה מימוש השירותים', exact: true }).click();
+  await expect.poll(async () => (await planning(page)).document.tasks.length).toBe(3); await saved(page);
+  const removed = await planning(page);
+  expect(removed.document.tasks).toEqual(before.document.tasks.filter((t: any) => t.id !== 'implementation'));
+  expect(removed.document.dependencies).toEqual([]);
+  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click();
+  await expect.poll(async () => (await planning(page)).document.tasks).toEqual(before.document.tasks);
+  expect((await planning(page)).document.dependencies).toEqual(before.document.dependencies);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'מחיקת עבודה שדרוג תשתית השירותים', exact: true }).nth(1).click();
+  await expect.poll(async () => (await planning(page)).document.tasks.length).toBe(1); await saved(page);
+  const workRemoved = await planning(page); expect(workRemoved.document.tasks).toEqual([before.document.tasks[3]]);
+  expect(workRemoved.document.workItems).toEqual([before.document.workItems[1]]);
+  await expect(page.locator('.work-title').filter({ hasText: 'שדרוג תשתית השירותים' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click();
+  await expect.poll(async () => (await planning(page)).document.tasks).toEqual(before.document.tasks);
+  await expect(page.locator('.work-title').filter({ hasText: 'שדרוג תשתית השירותים' })).toHaveCount(3);
+});
+test('every view opens on today and year jumps work in both directions without changing mission dates', async ({ page }) => {
+  const before = await planning(page);
+  const current = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()));
+  const year = Number(current.slice(0, 4));
+  const next = `${year + 1}${current.slice(4)}`, previous = `${year - 1}${current.slice(4)}`;
+  async function centeredToday() {
+    await expect.poll(() => page.locator('.timeline-viewport').evaluate(el => {
+      const line = el.querySelector('.today-line'); if (!line) return Infinity;
+      const box = el.getBoundingClientRect();
+      return Math.abs(line.getBoundingClientRect().x - (box.x + (el.clientWidth - 320) / 2));
+    })).toBeLessThan(3);
+  }
+  await centeredToday();
+  for (const mode of ['שבועות', 'חודשים', 'רבעונים']) {
+    await page.getByRole('button', { name: 'שנה קדימה', exact: true }).click();
+    await expect.poll(async () => (await planning(page)).preferences.center).toBe(next);
+    await page.getByRole('button', { name: mode, exact: true }).click(); await centeredToday();
+    await page.getByRole('button', { name: 'שנה אחורה', exact: true }).click();
+    await expect.poll(async () => (await planning(page)).preferences.center).toBe(previous);
+    await page.getByRole('button', { name: 'שנה קדימה', exact: true }).click(); await centeredToday();
+    await page.locator('.timeline-viewport').evaluate(el => el.scrollLeft += 120);
+    await page.getByRole('button', { name: mode, exact: true }).click(); await centeredToday();
+  }
+  await page.getByRole('button', { name: 'שנה קדימה', exact: true }).click();
+  await expect.poll(async () => (await planning(page)).preferences.center).toBe(next);
+  await page.reload(); await saved(page); await centeredToday();
+  expect((await planning(page)).document.tasks).toEqual(before.document.tasks);
+});
+for (const mode of ['שבועות', 'חודשים', 'רבעונים']) {
+  test(`continuous scrolling in ${mode} reaches future and past years without arrows or date changes`, async ({ page }) => {
+    await page.getByRole('button', { name: mode, exact: true }).click();
+    const before = await planning(page), viewport = page.locator('.timeline-viewport');
+    const originalStart = await page.locator('.date-header').getAttribute('data-range-start');
+    const originalTicks = await page.locator('.day-band > div').count();
+    const namesX = (await page.locator('.names-header').boundingBox())!.x;
+    async function scrollEdge(direction: number) {
+      const oldStart = await page.locator('.date-header').getAttribute('data-range-start');
+      const expected = await viewport.evaluate((el, direction) => {
+        el.scrollLeft = direction > 0 ? el.scrollWidth - el.clientWidth : 0;
+        const start = el.querySelector('.date-header')!.getAttribute('data-range-start')!;
+        const tickWidth = (el.querySelector('.day-band > div') as HTMLElement).getBoundingClientRect().width;
+        const dayWidth = document.querySelector('.segmented .active')?.textContent === 'רבעונים' ? tickWidth / 7 : tickWidth;
+        return Date.parse(start) / 86400000 + (el.scrollLeft + (el.clientWidth - 320) / 2) / dayWidth;
+      }, direction);
+      await expect.poll(() => page.locator('.date-header').getAttribute('data-range-start')).not.toBe(oldStart);
+      const actual = await viewport.evaluate(el => {
+        const start = el.querySelector('.date-header')!.getAttribute('data-range-start')!;
+        const tickWidth = (el.querySelector('.day-band > div') as HTMLElement).getBoundingClientRect().width;
+        const dayWidth = document.querySelector('.segmented .active')?.textContent === 'רבעונים' ? tickWidth / 7 : tickWidth;
+        return Date.parse(start) / 86400000 + (el.scrollLeft + (el.clientWidth - 320) / 2) / dayWidth;
+      });
+      expect(Math.abs(actual - expected)).toBeLessThan(0.05);
+    }
+    for (let i = 0; i < 20; i++) await scrollEdge(1);
+    const future = await page.locator('.date-header').getAttribute('data-range-start');
+    expect(Date.parse(future!) - Date.parse(originalStart!)).toBeGreaterThan(365 * 86400000);
+    for (let i = 0; i < 40; i++) await scrollEdge(-1);
+    const past = await page.locator('.date-header').getAttribute('data-range-start');
+    expect(Date.parse(originalStart!) - Date.parse(past!)).toBeGreaterThan(365 * 86400000);
+    expect(await page.locator('.day-band > div').count()).toBe(originalTicks);
+    expect((await page.locator('.names-header').boundingBox())!.x).toBe(namesX);
+    expect((await planning(page)).document.tasks).toEqual(before.document.tasks);
+    await page.getByRole('button', { name: 'היום', exact: true }).click();
+    await expect.poll(() => viewport.evaluate(el => {
+      const line = el.querySelector('.today-line'); if (!line) return Infinity;
+      return Math.abs(line.getBoundingClientRect().x - (el.getBoundingClientRect().x + (el.clientWidth - 320) / 2));
+    })).toBeLessThan(3);
+  });
+}
+test('create-work dialog schedules inclusive working days, validates fields, cancels safely and saves one undoable action', async ({ page }) => {
+  const before = await planning(page), add = page.getByRole('button', { name: 'הוספת עבודה' });
+  await add.click(); const dialog = page.getByRole('dialog', { name: 'עבודה חדשה', exact: true }); await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('כותרת העבודה')).toBeFocused(); await dialog.getByLabel('כותרת העבודה').fill('טיוטה לביטול');
+  await page.keyboard.press('Escape'); await expect(dialog).not.toBeVisible(); await expect(add).toBeFocused();
+  expect((await planning(page)).document).toEqual(before.document);
+  await add.click(); await dialog.getByLabel('כותרת העבודה').fill('עבודה עם תקופה'); await dialog.getByLabel('צוות אחראי', { exact: true }).selectOption('team-c');
+  await dialog.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-16'); await expect(dialog.getByRole('alert')).toContainText('שישי ושבת');
+  await dialog.getByRole('button', { name: 'שמירת עבודה' }).click(); await expect(dialog).toBeVisible(); expect((await planning(page)).document).toEqual(before.document);
+  await dialog.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-15'); await dialog.getByLabel('מספר ימי עבודה').fill('0'); await expect(dialog.getByRole('alert')).toContainText('מספר שלם');
+  await dialog.getByLabel('מספר ימי עבודה').fill('2.5'); await dialog.getByRole('button', { name: 'שמירת עבודה' }).click(); await expect(dialog).toBeVisible(); expect((await planning(page)).document).toEqual(before.document);
+  await dialog.getByLabel('מספר ימי עבודה').fill('5'); await expect(dialog.locator('.schedule-summary')).toContainText('21.10.2026');
+  await page.screenshot({ path: 'test-results/create-work-dialog.png' });
+  await dialog.getByRole('button', { name: 'שמירת עבודה' }).click(); await expect(dialog).not.toBeVisible();
+  await expect.poll(async () => (await planning(page)).document.workItems.length).toBe(before.document.workItems.length + 1); await saved(page);
+  const after = await planning(page), work = after.document.workItems.find((w: any) => w.title === 'עבודה עם תקופה');
+  const task = after.document.tasks.find((t: any) => t.workItemId === work.id);
+  expect(task.startDate).toBe('2026-10-15'); expect(task.endDate).toBe('2026-10-21'); expect(task.teamId).toBe('team-c');
+  expect(after.document.tasks.filter((t: any) => t.workItemId !== work.id)).toEqual(before.document.tasks);
+  await expect(page.getByTestId(`work-bar-${work.id}-team-c`)).toBeVisible();
+  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click();
+  await expect.poll(async () => (await planning(page)).document.tasks).toEqual(before.document.tasks);
+  expect((await planning(page)).document.workItems).toEqual(before.document.workItems);
+  await page.getByRole('button', { name: 'החזרת שינוי', exact: true }).click();
+  await expect.poll(async () => (await planning(page)).document.tasks.length).toBe(before.document.tasks.length + 1);
+  await page.reload(); await saved(page); expect((await planning(page)).document.tasks).toEqual(after.document.tasks);
 });
