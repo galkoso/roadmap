@@ -1,3 +1,5 @@
 import { bootstrapApplication } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
 import { AppComponent } from './app/app.component';
-bootstrapApplication(AppComponent).catch(console.error);
+import { routes } from './app/app.routes';
+bootstrapApplication(AppComponent, { providers: [provideRouter(routes)] }).catch(console.error);

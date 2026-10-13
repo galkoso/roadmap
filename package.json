@@ -9,7 +9,7 @@
   "scripts": {
     "start": "ng serve --host 127.0.0.1",
     "build": "ng build",
-    "preview": "http-server dist/roadmap/browser -a 127.0.0.1 -p 4200 -c-1",
+    "preview": "node scripts/serve-static.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test"

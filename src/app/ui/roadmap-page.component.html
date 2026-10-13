@@ -1,4 +1,4 @@
-<main class="app-shell" dir="rtl">
+<section class="roadmap-page" dir="rtl">
   <header class="app-heading"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><h1>מפת הדרכים של המדור</h1><p>תכנון אישי <span>·</span> ראשון–חמישי</p></div><span class="local-badge">◉ מרחב מקומי</span></header>
   <section class="toolbar" aria-label="כלי תכנון">
     <button class="primary add-work" (click)="createWorkDialog.open()" [disabled]="!store.loaded()"><span>＋</span> הוספת עבודה</button>
@@ -11,8 +11,7 @@
     <span class="save-state" role="status" [class.failed]="!!store.error()"><i></i>{{ store.saveStatus() }}</span>
     <div class="menu-wrap"><button class="icon-button menu-button" aria-label="ניהול צוותים וגיבוי" [attr.aria-expanded]="menu()" (click)="menu.set(!menu())">⋯</button>@if (menu()) { <div class="dropdown"><button (click)="showPanel('teams')">ניהול צוותים</button><button (click)="showPanel('backup')">גיבוי ושחזור</button></div> }</div>
   </section>
-  @if (store.error()) { <div class="error-banner" role="alert"><span>{{ store.error() }}</span><button (click)="download()">ייצוא המצב הנוכחי</button>@if (store.conflict()) { <button (click)="store.reload(); closeEditor()">טעינת הגרסה המקומית החדשה</button> } @else { <button (click)="store.retry()">ניסיון שמירה נוסף</button> }</div> }
-  @if (store.loaded()) { <app-timeline [selected]="selected()" (selectTask)="selectTask($event)" (editWork)="openWork($event)" (editTeam)="editTeam($event)" (deleteTask)="removeTask($event)" (deleteWork)="removeWork($event)"/> } @else { <div class="loading">{{ store.saveStatus() }}</div> }
+  @if (store.loaded()) { <app-timeline [selected]="selected()" (selectTask)="selectTask($event)" (editWork)="openWork($event)" (editTeam)="editTeam($event)" (moveToBacklog)="moveToBacklog($event)" (deleteTask)="removeTask($event)" (deleteWork)="removeWork($event)"/> } @else { <div class="loading">{{ store.saveStatus() }}</div> }
   <div class="notice" role="status" aria-live="polite">{{ store.notice() || 'כל צוות רואה את חלקו. העבודה המשותפת נשארת מחוברת.' }}</div>
   @if (selected() || newTaskWork()) { <app-task-editor [taskId]="selected()" [workId]="newTaskWork()" [newTask]="!!newTaskWork()" (deleteTask)="removeTask($event)" (close)="closeEditor()"/> }
   @if (panel() === 'work') {
@@ -37,4 +36,4 @@
   }
   <app-create-work-dialog #createWorkDialog (created)="workCreated($event)"/>
   <footer class="app-footer"><span>תכנון ברור. מקום לכל צוות.</span><span>נתונים מקומיים · ללא שירות מרוחק</span></footer>
-</main>
+</section>

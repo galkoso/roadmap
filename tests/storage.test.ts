@@ -49,3 +49,13 @@ describe('IndexedDB atomic storage and backup integration', () => {
     expect(await db.load()).toEqual(before);
   });
 });
+it('migrates an existing IndexedDB document in one write and retains legacy data if that write fails', async () => {
+  const db = storage(), current = seedDocument(), legacy = { ...current, schemaVersion: 1, tasks: current.tasks.map(({ planningState, ...task }) => task) };
+  await db.save(legacy as unknown as typeof current, initialPreferences(), null);
+  const original = await db.load(), migrated = validateDocument(original!.document);
+  const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => { throw new DOMException('quota full', 'QuotaExceededError'); });
+  await expect(db.save(migrated, initialPreferences(), 1)).rejects.toThrow(); put.mockRestore(); expect(await db.load()).toEqual(original);
+  await db.save(migrated, initialPreferences(), 1);
+  const stored = await db.load(); expect(stored?.document.schemaVersion).toBe(2);
+  expect(stored?.document.tasks.map(({ planningState, ...task }) => task)).toEqual(legacy.tasks);
+});

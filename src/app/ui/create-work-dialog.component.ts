@@ -11,13 +11,17 @@ import { addWorkingDays, formatDate, nextWorkingDay, today, validateRange } from
       <div class="panel-heading"><div><span class="eyebrow">הוספה למפת הדרכים</span><h2 id="create-work-heading">עבודה חדשה</h2></div><button type="button" class="icon-button" aria-label="סגירת יצירת עבודה" (click)="close()">×</button></div>
       <form (ngSubmit)="save()" novalidate>
         <label>כותרת העבודה<input name="create-work-title" [(ngModel)]="title" required maxlength="200" autofocus placeholder="מה מתכננים לעשות?"></label>
-        <label class="check-label schedule-toggle"><input type="checkbox" name="scheduled" [(ngModel)]="scheduled" (ngModelChange)="resetErrors()">להגדיר תקופה לעבודה</label>
-        @if (scheduled) {
+        <label class="check-label schedule-toggle"><input type="checkbox" name="create-in-backlog" [(ngModel)]="backlog" (ngModelChange)="resetErrors()">הוספה לבקלוג</label>
+        @if (!backlog) { <label class="check-label schedule-toggle"><input type="checkbox" name="scheduled" [(ngModel)]="scheduled" (ngModelChange)="resetErrors()">להגדיר תקופה לעבודה</label> }
+        @if (scheduled && !backlog) {
           <label>צוות אחראי<select name="create-work-team" [(ngModel)]="teamId" aria-label="צוות אחראי">@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
           <div class="field-grid"><label>תאריך התחלה<input type="date" name="create-work-start" [(ngModel)]="startDate" (ngModelChange)="checkSchedule()" dir="ltr" required></label>
             <label>מספר ימי עבודה<input type="number" name="create-work-days" [(ngModel)]="workingDays" (ngModelChange)="checkSchedule()" min="1" max="10000" step="1" dir="ltr" required></label></div>
           @if (scheduleError) { <p class="field-error" role="alert">{{ scheduleError }}</p> } @else { <div class="schedule-summary"><span>תאריך סיום מחושב</span><strong dir="ltr">{{ endLabel() }}</strong><small>ראשון–חמישי · כולל יום ההתחלה והסיום</small></div> }
           <p class="field-hint">תיווצר משימה ראשונה לתקופה זו בצוות שנבחר. אפשר לערוך אותה ולהוסיף משימות בהמשך.</p>
+        } @else if (backlog) {
+          <label>צוות אחראי<select name="backlog-team" [(ngModel)]="teamId" aria-label="צוות אחראי"><option value="">ללא צוות</option>@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
+          <p class="field-hint">תיווצר משימה בבקלוג, ללא תאריכים. העבודה לא תופיע בציר הזמן עד לשיבוץ משימה.</p>
         } @else { <p class="field-hint">העבודה תתווסף ללא פס זמן. אפשר להוסיף לה משימות בהמשך.</p> }
         @if (error) { <p class="field-error" role="alert">{{ error }}</p> }
         <div class="form-actions dialog-actions"><button class="primary" type="submit" [disabled]="store.importing() || !store.loaded()">שמירת עבודה</button><button type="button" (click)="close()">ביטול</button></div>
@@ -31,11 +35,11 @@ export class CreateWorkDialogComponent {
   readonly opened = signal(false);
   readonly created = output<{ id: string; startDate?: string }>();
   @ViewChild('dialog', { static: true }) dialog!: ElementRef<HTMLDialogElement>;
-  title = ''; teamId = ''; startDate = nextWorkingDay(today()); workingDays: number | null = 5; scheduled = true;
+  title = ''; teamId = ''; startDate = nextWorkingDay(today()); workingDays: number | null = 5; scheduled = true; backlog = false;
   error = ''; scheduleError = '';
   open(): void {
     this.title = ''; this.teamId = [...this.store.document().teams].sort((a, b) => a.order - b.order)[0]?.id ?? '';
-    this.startDate = nextWorkingDay(today()); this.workingDays = 5; this.scheduled = true; this.resetErrors();
+    this.startDate = nextWorkingDay(today()); this.workingDays = 5; this.scheduled = true; this.backlog = false; this.resetErrors();
     this.opened.set(true); this.changeDetector.detectChanges(); this.dialog.nativeElement.showModal();
   }
   close(): void { this.dialog.nativeElement.close(); this.opened.set(false); }
@@ -53,17 +57,21 @@ export class CreateWorkDialogComponent {
   save(): void {
     this.error = ''; if (!this.title.trim()) { this.error = 'יש להזין כותרת עבודה'; return; }
     if (!this.store.loaded() || this.store.importing()) return;
-    if (this.scheduled) { this.checkSchedule(); if (this.scheduleError) return; }
+    if (this.scheduled && !this.backlog) { this.checkSchedule(); if (this.scheduleError) return; }
     try {
       const doc = clone(this.store.document()), id = uid(), title = this.title.trim();
-      if (this.scheduled && !doc.teams.some(t => t.id === this.teamId)) throw new Error('יש לבחור צוות אחראי');
+      if (((this.scheduled && !this.backlog) || (this.backlog && this.teamId)) && !doc.teams.some(t => t.id === this.teamId)) throw new Error('יש לבחור צוות אחראי');
       doc.workItems.push({ id, title, order: Math.max(-1, ...doc.workItems.map(w => w.order)) + 1 });
-      if (this.scheduled) doc.tasks.push({
+      if (this.backlog) doc.tasks.push({
+        planningState: 'backlog', id: uid(), workItemId: id, teamId: this.teamId || null, title,
+        color: palette[0], status: 'planned', notes: '', order: 0
+      });
+      else if (this.scheduled) doc.tasks.push({
         planningState: 'scheduled', id: uid(), workItemId: id, teamId: this.teamId, title, startDate: this.startDate, endDate: this.endDate(),
         color: palette[0], status: 'planned', notes: '', order: 0
       });
-      this.store.commit(doc, this.scheduled ? `העבודה נוצרה · ${this.workingDays} ימי עבודה · סיום ${this.endLabel()}` : 'העבודה נוספה ללא משימות');
-      this.close(); this.created.emit({ id, startDate: this.scheduled ? this.startDate : undefined });
+      this.store.commit(doc, this.backlog ? 'העבודה והמשימה נוספו לבקלוג' : this.scheduled ? `העבודה נוצרה · ${this.workingDays} ימי עבודה · סיום ${this.endLabel()}` : 'העבודה נוספה ללא משימות');
+      this.close(); this.created.emit({ id, startDate: this.scheduled && !this.backlog ? this.startDate : undefined });
     } catch (error) { this.error = (error as Error).message; }
   }
 }

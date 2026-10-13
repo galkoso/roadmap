@@ -140,7 +140,7 @@ test('failed IndexedDB writes show error, retain memory for export and recover o
 test('300-task browser render, vertical sticky dates, stable row DOM during preview, and offline operation', async ({ page, context }) => {
   const stored = await planning(page), doc = stored.document; doc.dependencies = []; const prototype = doc.tasks[0];
   doc.tasks = Array.from({ length: 300 }, (_, i) => ({ ...prototype, id: 'load-task-' + i, title: 'משימה ' + i, teamId: doc.teams[i % 3].id, order: i }));
-  const backup = { schemaVersion: 1, exportedAt: new Date().toISOString(), document: doc, preferences: stored.preferences };
+  const backup = { schemaVersion: doc.schemaVersion, exportedAt: new Date().toISOString(), document: doc, preferences: stored.preferences };
   await page.getByRole('button', { name: 'ניהול צוותים וגיבוי' }).click(); await page.getByRole('button', { name: 'גיבוי ושחזור', exact: true }).click();
   await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: '300.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) }); await page.getByRole('button', { name: 'אישור והחלפת התכנון' }).click(); await saved(page); await page.getByRole('button', { name: 'סגירת הגיבוי' }).click();
   await expect(page.locator('.task-bar')).toHaveCount(300); const y = (await page.locator('.timeline-header').boundingBox())!.y;

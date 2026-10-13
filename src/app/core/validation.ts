@@ -7,7 +7,7 @@ const text = (value: unknown): value is string => typeof value === 'string';
 const order = (value: unknown): boolean => Number.isSafeInteger(value) && Number(value) >= 0;
 export function validateDocument(value: unknown): RoadmapDocument {
   assert(record(value));
-  assert([1, SCHEMA_VERSION].includes(Number(value['schemaVersion'])), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1 ו־2');
+  assert((value['schemaVersion'] === 1 || value['schemaVersion'] === SCHEMA_VERSION), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1 ו־2');
   if (value['schemaVersion'] === 1) {
     assert(Array.isArray(value['tasks']));
     for (const task of value['tasks']) assert(record(task) && text(task['teamId']) && text(task['workItemId']) && text(task['startDate']) && text(task['endDate']) && task['planningState'] === undefined, 'נתונים ישנים אינם תקינים; לא שונו ולא נמחקו');
@@ -70,7 +70,7 @@ export function validatePreferences(value: unknown): ViewPreferences {
 export function parseBackup(raw: string): Backup {
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new Error('הקובץ אינו JSON תקין'); }
-  assert(record(value)); assert([1, SCHEMA_VERSION].includes(Number(value['schemaVersion'])), 'גרסת הגיבוי אינה נתמכת');
+  assert(record(value)); assert((value['schemaVersion'] === 1 || value['schemaVersion'] === SCHEMA_VERSION), 'גרסת הגיבוי אינה נתמכת');
   assert(record(value['document']) && value['document']['schemaVersion'] === value['schemaVersion'], 'גרסת המסמך אינה תואמת לגרסת הגיבוי');
   assert(text(value['exportedAt']) && Number.isFinite(Date.parse(value['exportedAt'])));
   return { schemaVersion: SCHEMA_VERSION, exportedAt: value['exportedAt'], document: validateDocument(value['document']), preferences: validatePreferences(value['preferences']) };

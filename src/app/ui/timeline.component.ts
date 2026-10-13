@@ -1,10 +1,10 @@
 import { AfterViewInit, ChangeDetectorRef, ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, input, OnDestroy, output, signal, ViewChild } from '@angular/core';
 import { RoadmapStore } from '../core/store';
-import { clone, RoadmapDocument, Task, Team, WorkItem } from '../core/model';
+import { clone, isScheduled, RoadmapDocument, ScheduledTask, Team, WorkItem } from '../core/model';
 import { addDays, daysBetween, duration, formatDate, isWorkingDay, monthLabel, nextWorkingDay, today } from '../core/dates';
 import { editTask, shiftTask, shiftWork, workRange } from '../core/scheduler';
 import { statuses } from '../core/model';
-interface Row { key: string; kind: 'team' | 'work' | 'task'; team: Team; work?: WorkItem; task?: Task; start?: string; end?: string; shared?: boolean }
+interface Row { key: string; kind: 'team' | 'work' | 'task'; team: Team & { unassigned?: boolean }; independent?: boolean; work?: WorkItem; task?: ScheduledTask; start?: string; end?: string; shared?: boolean }
 interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' | 'start' | 'end'; base: RoadmapDocument; start: string; end: string; next: RoadmapDocument; moved: boolean }
 @Component({
   selector: 'app-timeline', standalone: true, changeDetection: ChangeDetectionStrategy.OnPush,
@@ -17,7 +17,7 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
             <div class="month-band">@for (month of months(); track month.start) { <div [style.left.px]="x(month.start)" [style.width.px]="month.width">{{ month.label }}</div> }</div>
             <div class="day-band">@for (tick of ticks(); track tick.date) { <div [style.left.px]="x(tick.date)" [style.width.px]="tick.width" [class.weekend]="!working(tick.date)"><span>{{ tick.label }}</span></div> }</div>
           </div>
-          <div class="names-header">צוותים, עבודות ומשימות <small>{{ store.visible().tasks.length }} משימות</small></div>
+          <div class="names-header">צוותים, עבודות ומשימות <small>{{ scheduledTasks().length }} משימות</small></div>
         </div>
         <div class="rows-area" [style.--day-width]="store.preferences().dayWidth + 'px'">
           <div class="calendar-background" [style.width.px]="width()" [style.background-image]="background()"></div>
@@ -39,13 +39,17 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
               </div>
               <div class="row-name" dir="rtl">
                 @if (row.kind === 'team') {
-                  <button class="hierarchy team-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><i class="team-icon">{{ row.team.name.slice(-2, -1) }}</i>{{ row.team.name }}<small>{{ teamCount(row.team.id) }}</small></button><button class="row-action team-name-edit" [attr.aria-label]="'שינוי שם הצוות ' + row.team.name" title="שינוי שם הצוות" (click)="editTeam.emit(row.team.id)">✎</button>
+                  <button class="hierarchy team-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><i class="team-icon">{{ row.team.name.slice(-2, -1) }}</i>{{ row.team.name }}<small>{{ teamCount(row.team.id) }}</small></button>@if (!row.team.unassigned) { <button class="row-action team-name-edit" [attr.aria-label]="'שינוי שם הצוות ' + row.team.name" title="שינוי שם הצוות" (click)="editTeam.emit(row.team.id)">✎</button> }
                 } @else if (row.kind === 'work') {
                   <button class="hierarchy work-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><span class="name-text">{{ row.work!.title }}</span>@if (row.shared) { <span class="shared" title="עבודה משותפת">משותפת</span> }</button>
-                  <div class="row-actions"><button class="row-action" aria-label="עריכת עבודה" (click)="editWork.emit(row.work!.id)">⋯</button><button class="row-action delete-action" [attr.aria-label]="'מחיקת עבודה ' + row.work!.title" title="מחיקת עבודה" (click)="deleteWork.emit(row.work!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div>
+                  @if (!row.independent) { <div class="row-actions"><button class="row-action" aria-label="עריכת עבודה" (click)="editWork.emit(row.work!.id)">⋯</button><button class="row-action delete-action" [attr.aria-label]="'מחיקת עבודה ' + row.work!.title" title="מחיקת עבודה" (click)="deleteWork.emit(row.work!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div> }
                 } @else {
                   <button class="task-name" (click)="selectTask.emit(row.task!.id)"><i [style.background]="row.task!.color"></i><span class="name-text">{{ row.task!.title }}<small>{{ status[row.task!.status] }}</small></span></button>
-                  <div class="row-actions">@if (!intersects(row.start!, row.end!)) { <button class="row-action" aria-label="ניווט למשימה" title="ניווט למשימה" (click)="goTo(row.start!)">↗</button> }<button class="row-action delete-action" [attr.aria-label]="'מחיקת משימה ' + row.task!.title" title="מחיקת משימה" (click)="deleteTask.emit(row.task!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div>
+                  <div class="row-actions"><button class="row-action" [attr.aria-label]="'פעולות משימה ' + row.task!.title" [attr.popovertarget]="'task-menu-' + row.task!.id" (click)="positionTaskMenu($event)">⋯</button>
+                    <div popover class="task-action-menu" [id]="'task-menu-' + row.task!.id" [style.top.px]="taskMenuPosition().top" [style.left.px]="taskMenuPosition().left">
+                      <button (click)="taskMenuAction($event, row.task!.id, false)">עריכת משימה</button>
+                      <button (click)="taskMenuAction($event, row.task!.id, true)">העברה לבקלוג</button>
+                    </div>@if (!intersects(row.start!, row.end!)) { <button class="row-action" aria-label="ניווט למשימה" title="ניווט למשימה" (click)="goTo(row.start!)">↗</button> }<button class="row-action delete-action" [attr.aria-label]="'מחיקת משימה ' + row.task!.title" title="מחיקת משימה" (click)="deleteTask.emit(row.task!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div>
                 }
               </div>
             </div>
@@ -64,9 +68,18 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   readonly store = inject(RoadmapStore);
   private readonly changeDetector = inject(ChangeDetectorRef);
   readonly selected = input<string | null>(null);
-  readonly deleteTask = output<string>(); readonly deleteWork = output<string>();
+  readonly moveToBacklog = output<string>(); readonly deleteTask = output<string>(); readonly deleteWork = output<string>();
   readonly selectTask = output<string>(); readonly editWork = output<string>(); readonly editTeam = output<string>();
   @ViewChild('viewport') viewport!: ElementRef<HTMLDivElement>;
+  readonly taskMenuPosition = signal({ top: 0, left: 0 });
+  positionTaskMenu(event: MouseEvent): void {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    this.taskMenuPosition.set({ top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 100)), left: Math.max(8, Math.min(rect.right - 190, window.innerWidth - 198)) });
+  }
+  taskMenuAction(event: MouseEvent, id: string, backlog: boolean): void {
+    (event.currentTarget as HTMLElement).closest<HTMLElement>('[popover]')?.hidePopover();
+    if (backlog) this.moveToBacklog.emit(id); else this.selectTask.emit(id);
+  }
   readonly status = statuses; readonly working = isWorkingDay;
   private drag: Drag | null = null; private suppressClick = false; private scrollTimer?: ReturnType<typeof setTimeout>; private positioning = false;
   private readonly windowCenter = signal(today());
@@ -80,19 +93,31 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   readonly width = computed(() => this.span() * this.store.preferences().dayWidth);
   readonly periodLabel = computed(() => `${formatDate(this.start())} — ${formatDate(addDays(this.start(), this.span() - 1))}`);
   readonly todayX = computed(() => this.x(today()) + this.store.preferences().dayWidth / 2);
+  readonly scheduledTasks = computed(() => this.store.visible().tasks.filter(isScheduled));
   readonly rows = computed<Row[]>(() => {
-    const doc = this.store.visible(), result: Row[] = [], collapsed = new Set(this.store.preferences().collapsed);
-    const workTasks = new Map<string, Task[]>();
-    for (const t of doc.tasks) workTasks.set(t.workItemId, [...(workTasks.get(t.workItemId) ?? []), t]);
-    for (const team of [...doc.teams].sort((a, b) => a.order - b.order)) {
-      result.push({ key: 'team:' + team.id, kind: 'team', team });
-      if (collapsed.has('team:' + team.id)) continue;
+    const doc = this.store.visible(), scheduled = this.scheduledTasks(), result: Row[] = [], collapsed = new Set(this.store.preferences().collapsed);
+    const populatedWorks = new Set(doc.tasks.map(t => t.workItemId));
+    const workTasks = new Map<string, ScheduledTask[]>();
+    for (const t of scheduled) if (t.workItemId) workTasks.set(t.workItemId, [...(workTasks.get(t.workItemId) ?? []), t]);
+    const teams: (Team & { unassigned?: boolean })[] = [...doc.teams].sort((a, b) => a.order - b.order);
+    if (scheduled.some(t => t.teamId === null)) teams.push({ id: '__unassigned__', name: 'ללא צוות', order: teams.length, unassigned: true });
+    for (const team of teams) {
+      const groupKey = team.unassigned ? 'team:unassigned' : 'team:' + team.id;
+      const owns = (t: ScheduledTask): boolean => t.teamId === (team.unassigned ? null : team.id);
+      result.push({ key: groupKey, kind: 'team', team });
+      if (collapsed.has(groupKey)) continue;
       for (const work of [...doc.workItems].sort((a, b) => a.order - b.order)) {
-        const all = workTasks.get(work.id) ?? [], tasks = all.filter(t => t.teamId === team.id).sort((a, b) => a.order - b.order);
-        if (!tasks.length && (all.length || team.id !== [...doc.teams].sort((a, b) => a.order - b.order)[0].id)) continue;
+        const all = workTasks.get(work.id) ?? [], tasks = all.filter(owns).sort((a, b) => a.order - b.order);
+        if (!tasks.length && (populatedWorks.has(work.id) || team.unassigned || team.id !== teams[0].id)) continue;
         const key = 'work:' + work.id + ':' + team.id, range = workRange(doc, work.id);
         result.push({ key, kind: 'work', team, work, start: range?.startDate, end: range?.endDate, shared: new Set(all.map(t => t.teamId)).size > 1 });
         if (!collapsed.has(key)) for (const task of tasks) result.push({ key: task.id, kind: 'task', team, work, task, start: task.startDate, end: task.endDate });
+      }
+      const independent = scheduled.filter(t => owns(t) && t.workItemId === null).sort((a, b) => a.order - b.order);
+      if (independent.length) {
+        const key = 'independent:' + team.id;
+        result.push({ key, kind: 'work', team, independent: true, work: { id: '__independent__', title: 'משימות עצמאיות', order: 0 } });
+        if (!collapsed.has(key)) for (const task of independent) result.push({ key: task.id, kind: 'task', team, independent: true, task, start: task.startDate, end: task.endDate });
       }
     }
     return result;
@@ -137,7 +162,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
     effect(() => {
       const key = this.preferenceKey();
       if (key !== this.layoutKey) {
-        this.layoutKey = key; this.windowCenter.set(this.store.preferences().center);
+        this.layoutKey = key; this.windowCenter.set(this.store.preferences().timelineAnchor ?? this.store.preferences().center);
         setTimeout(() => this.position(), 0);
       }
     });
@@ -161,7 +186,13 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
     if (!this.viewport || this.drag || this.destroyed) return; clearTimeout(this.scrollTimer); this.positioning = true;
     const el = this.viewport.nativeElement;
     el.scrollLeft = this.store.preferences().scrollLeft ?? Math.max(0, this.x(center) + this.store.preferences().dayWidth / 2 - (el.clientWidth - 320) / 2);
+    el.scrollTop = this.store.preferences().scrollTop ?? 0;
     setTimeout(() => { this.positioning = false; }, 0);
+  }
+  captureView(): void {
+    clearTimeout(this.scrollTimer);
+    const el = this.viewport.nativeElement, center = this.visibleCenter(); this.layoutKey = this.preferenceKey(center);
+    this.store.setPreferences({ center, timelineAnchor: this.windowCenter(), scrollLeft: el.scrollLeft, scrollTop: el.scrollTop });
   }
   onScroll(): void {
     if (this.positioning || this.drag || this.destroyed) return;
@@ -182,13 +213,27 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
       const center = this.visibleCenter(); this.layoutKey = this.preferenceKey(center);
       const preferences = this.store.preferences();
       if (center === preferences.center && preferences.scrollLeft === undefined) return;
-      this.store.setPreferences({ center, scrollLeft: undefined });
+      this.store.setPreferences({ center, timelineAnchor: this.windowCenter(), scrollLeft: el.scrollLeft, scrollTop: el.scrollTop });
     }, 250);
   }
   visibleCenter(): string {
     if (!this.viewport) return this.store.preferences().center;
     const el = this.viewport.nativeElement;
     return addDays(this.start(), Math.floor((el.scrollLeft + (el.clientWidth - 320) / 2) / this.store.preferences().dayWidth));
+  }
+  revealTask(id: string): void {
+    const task = this.store.document().tasks.find(t => t.id === id); if (!task || !isScheduled(task)) return;
+    const team = task.teamId ?? '__unassigned__';
+    const teamKey = task.teamId ? 'team:' + task.teamId : 'team:unassigned';
+    const workKey = task.workItemId ? 'work:' + task.workItemId + ':' + team : 'independent:' + team;
+    this.store.setPreferences({ collapsed: this.store.preferences().collapsed.filter(key => key !== teamKey && key !== workKey) });
+    this.goTo(task.startDate);
+    setTimeout(() => {
+      if (this.destroyed) return;
+      const index = this.rows().findIndex(row => row.task?.id === id);
+      this.viewport.nativeElement.scrollTop = Math.max(0, index * 48 - 60);
+      this.viewport.nativeElement.querySelector<HTMLElement>(`[data-testid="task-bar-${CSS.escape(id)}-${CSS.escape(team)}"]`)?.focus({ preventScroll: true });
+    }, 30);
   }
   x(date: string): number { return daysBetween(this.start(), date) * this.store.preferences().dayWidth; }
   barLeft(date: string): number { return Math.max(0, this.x(date)) + 2; }
@@ -198,8 +243,8 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   barLabel(row: Row): string { return `${row.task?.title ?? row.work?.title}: ${formatDate(row.start!)} – ${formatDate(row.end!)}${row.task ? ' · ' + duration(row.start!, row.end!) + ' ימי עבודה' : ''}`; }
   collapsed(key: string): boolean { return this.store.preferences().collapsed.includes(key); }
   toggle(key: string): void { const keys = this.store.preferences().collapsed; this.store.setPreferences({ collapsed: keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key] }); }
-  teamCount(id: string): number { return this.store.visible().tasks.filter(t => t.teamId === id).length; }
-  goTo(date: string): void { this.store.setPreferences({ center: date, scrollLeft: undefined }); this.recenter(); }
+  teamCount(id: string): number { return this.scheduledTasks().filter(t => t.teamId === (id === '__unassigned__' ? null : id)).length; }
+  goTo(date: string): void { this.store.setPreferences({ center: date, scrollLeft: undefined, timelineAnchor: undefined, scrollTop: 0 }); this.recenter(); }
   barClick(row: Row): void { if (this.suppressClick) { this.suppressClick = false; return; } if (row.task) this.selectTask.emit(row.task.id); else this.editWork.emit(row.work!.id); }
   begin(event: PointerEvent, row: Row, kind: Drag['kind']): void {
     if (event.button !== 0 || (!this.store.loaded() || this.store.importing())) return; event.preventDefault(); event.stopPropagation();
@@ -218,11 +263,11 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
       else drag.next = editTask(drag.base, drag.id, drag.kind === 'start' ? { startDate: date > drag.end ? drag.end : date } : { endDate: date < drag.start ? drag.start : date });
       this.store.preview.set(drag.next);
       if (drag.kind === 'work') {
-        const count = new Set(drag.next.tasks.filter(t => t.workItemId === drag.id).map(t => t.teamId)).size;
+        const count = new Set(drag.next.tasks.filter(isScheduled).filter(t => t.workItemId === drag.id).map(t => t.teamId)).size;
         const range = workRange(drag.next, drag.id)!;
         this.store.notice.set(`הזזת כל משימות העבודה · ${count} צוותים · ${formatDate(range.startDate)}`);
       } else {
-        const task = drag.next.tasks.find(t => t.id === drag.id)!;
+        const task = drag.next.tasks.find(t => t.id === drag.id)! as ScheduledTask;
         const changed = drag.next.tasks.filter(t => t.id !== drag.id && drag.base.tasks.some(o => o.id === t.id && (o.startDate !== t.startDate || o.endDate !== t.endDate))).map(t => t.title);
         this.store.notice.set(`${formatDate(task.startDate)} – ${formatDate(task.endDate)} · ${duration(task.startDate, task.endDate)} ימי עבודה${task.startDate !== date && drag.kind !== 'end' ? ' · הוצמד למועד חוקי' : ''}${changed.length ? ' · עודכנו: ' + changed.join(', ') : ''}`);
       }
