@@ -81,8 +81,8 @@ test('backup export-import, invalid file stays untouched, HTML stays text', asyn
 });
 test('two tabs refuse stale writes and offer reload while preserving in-memory backup', async ({ page, context }) => {
   const second = await context.newPage(); await second.goto('/'); await saved(second);
-  await page.getByRole('button', { name: 'הוספת עבודה' }).click(); await page.getByLabel('כותרת העבודה').fill('תכנון מהלשונית הראשונה'); await page.getByRole('button', { name: 'שמירת עבודה' }).click(); await saved(page);
-  await second.getByRole('button', { name: 'הוספת עבודה' }).click(); await second.getByLabel('כותרת העבודה').fill('שינוי ישן'); await second.getByRole('button', { name: 'שמירת עבודה' }).click();
+  await page.getByRole('button', { name: 'כותרת חדשה' }).click(); await page.getByLabel('שם הכותרת').fill('תכנון מהלשונית הראשונה'); await page.getByRole('button', { name: 'שמירת כותרת' }).click(); await saved(page);
+  await second.getByRole('button', { name: 'כותרת חדשה' }).click(); await second.getByLabel('שם הכותרת').fill('שינוי ישן'); await second.getByRole('button', { name: 'שמירת כותרת' }).click();
   await expect(second.getByRole('alert')).toContainText('בלשונית אחרת'); await expect(second.locator('.save-state')).not.toHaveText('נשמר');
   expect((await planning(page)).document.workItems.some((w: any) => w.title === 'שינוי ישן')).toBe(false);
   await second.getByRole('button', { name: 'טעינת הגרסה המקומית החדשה' }).click(); await saved(second); await expect(second.locator('.work-title').filter({ hasText: 'תכנון מהלשונית הראשונה' })).toBeVisible();
@@ -107,9 +107,9 @@ test('rename a shared work updates three projections; cycle is rejected atomical
   await expect(page.locator('.dependency-picker')).toContainText('תכנון הארכיטקטורה'); await expect(page.locator('.dependency-lines path[marker-end]')).toHaveCount(1);
 });
 test('create empty work and its first one-day task, then delete without affecting independent planning', async ({ page }) => {
-  await page.getByRole('button', { name: 'הוספת עבודה' }).click(); await page.getByLabel('כותרת העבודה').fill('עבודה ריקה'); await page.getByRole('checkbox', { name: 'להגדיר תקופה לעבודה' }).uncheck(); await page.getByRole('button', { name: 'שמירת עבודה' }).click(); await saved(page);
+  await page.getByRole('button', { name: 'כותרת חדשה' }).click(); await page.getByLabel('שם הכותרת').fill('עבודה ריקה'); await page.getByRole('button', { name: 'שמירת כותרת' }).click(); await saved(page);
   const empty = await planning(page), work = empty.document.workItems.find((w: any) => w.title === 'עבודה ריקה'); await expect(page.getByTestId(`work-bar-${work.id}-team-a`)).toHaveCount(0);
-  await page.locator('.work-row').filter({ hasText: 'עבודה ריקה' }).getByRole('button', { name: 'עריכת עבודה' }).click(); await page.getByRole('button', { name: 'הוספת משימה', exact: false }).click();
+  await page.locator('.work-row').filter({ hasText: 'עבודה ריקה' }).getByRole('button', { name: 'הוספת משימה תחת עבודה ריקה', exact: true }).click();
   await page.getByLabel('שם המשימה', { exact: true }).fill('משימה קצרה'); await page.getByRole('button', { name: 'הוספת משימה', exact: true }).click(); await saved(page);
   const added = await planning(page), task = added.document.tasks.find((t: any) => t.title === 'משימה קצרה'); expect(task.startDate).toBe(task.endDate);
   await expect(page.getByTestId(`task-bar-${task.id}-team-a`)).toBeVisible(); expect((await page.getByTestId(`task-bar-${task.id}-team-a`).boundingBox())!.width).toBeGreaterThanOrEqual(8);
@@ -131,7 +131,7 @@ test('team creation, rename, order and delete with explicit task transfer preser
 test('failed IndexedDB writes show error, retain memory for export and recover on retry', async ({ page }) => {
   const before = await planning(page);
   await page.evaluate(() => { const put = IDBObjectStore.prototype.put; (window as any).__originalPut = put; IDBObjectStore.prototype.put = () => { throw new DOMException('quota full', 'QuotaExceededError'); }; });
-  await page.getByRole('button', { name: 'הוספת עבודה' }).click(); await page.getByLabel('כותרת העבודה').fill('תכנון שלא נשמר'); await page.getByRole('button', { name: 'שמירת עבודה' }).click();
+  await page.getByRole('button', { name: 'כותרת חדשה' }).click(); await page.getByLabel('שם הכותרת').fill('תכנון שלא נשמר'); await page.getByRole('button', { name: 'שמירת כותרת' }).click();
   await expect(page.getByRole('alert')).toContainText('quota full'); await expect(page.locator('.save-state')).not.toHaveText('נשמר'); expect((await planning(page)).document).toEqual(before.document);
   const downloadPromise = page.waitForEvent('download'); await page.getByRole('button', { name: 'ייצוא המצב הנוכחי' }).click(); const download = await downloadPromise; const stream = await download.createReadStream(), chunks = []; for await (const chunk of stream!) chunks.push(chunk);
   expect(JSON.parse(Buffer.concat(chunks).toString()).document.workItems.some((w: any) => w.title === 'תכנון שלא נשמר')).toBe(true);
@@ -251,30 +251,38 @@ for (const mode of ['שבועות', 'חודשים', 'רבעונים']) {
     })).toBeLessThan(3);
   });
 }
-test('create-work dialog schedules inclusive working days, validates fields, cancels safely and saves one undoable action', async ({ page }) => {
-  const before = await planning(page), add = page.getByRole('button', { name: 'הוספת עבודה' });
-  await add.click(); const dialog = page.getByRole('dialog', { name: 'עבודה חדשה', exact: true }); await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('כותרת העבודה')).toBeFocused(); await dialog.getByLabel('כותרת העבודה').fill('טיוטה לביטול');
+test('heading creation and task creation validate separately, preserve inclusive dates and undo as separate actions', async ({ page }) => {
+  const before = await planning(page), add = page.getByRole('button', { name: 'כותרת חדשה' });
+  await add.click(); const dialog = page.getByRole('dialog', { name: 'כותרת חדשה', exact: true });
+  await expect(dialog.getByLabel('שם הכותרת')).toBeFocused(); await dialog.getByLabel('שם הכותרת').fill('טיוטה לביטול');
   await page.keyboard.press('Escape'); await expect(dialog).not.toBeVisible(); await expect(add).toBeFocused();
   expect((await planning(page)).document).toEqual(before.document);
-  await add.click(); await dialog.getByLabel('כותרת העבודה').fill('עבודה עם תקופה'); await dialog.getByLabel('צוות אחראי', { exact: true }).selectOption('team-c');
-  await dialog.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-16'); await expect(dialog.getByRole('alert')).toContainText('שישי ושבת');
-  await dialog.getByRole('button', { name: 'שמירת עבודה' }).click(); await expect(dialog).toBeVisible(); expect((await planning(page)).document).toEqual(before.document);
-  await dialog.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-15'); await dialog.getByLabel('מספר ימי עבודה').fill('0'); await expect(dialog.getByRole('alert')).toContainText('מספר שלם');
-  await dialog.getByLabel('מספר ימי עבודה').fill('2.5'); await dialog.getByRole('button', { name: 'שמירת עבודה' }).click(); await expect(dialog).toBeVisible(); expect((await planning(page)).document).toEqual(before.document);
-  await dialog.getByLabel('מספר ימי עבודה').fill('5'); await expect(dialog.locator('.schedule-summary')).toContainText('21.10.2026');
-  await page.screenshot({ path: 'test-results/create-work-dialog.png' });
-  await dialog.getByRole('button', { name: 'שמירת עבודה' }).click(); await expect(dialog).not.toBeVisible();
-  await expect.poll(async () => (await planning(page)).document.workItems.length).toBe(before.document.workItems.length + 1); await saved(page);
-  const after = await planning(page), work = after.document.workItems.find((w: any) => w.title === 'עבודה עם תקופה');
-  const task = after.document.tasks.find((t: any) => t.workItemId === work.id);
+  await add.click(); await dialog.getByLabel('שם הכותרת').fill('  '); await dialog.getByRole('button', { name: 'שמירת כותרת' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('יש להזין שם'); expect((await planning(page)).document).toEqual(before.document);
+  await dialog.getByLabel('שם הכותרת').fill('כותרת עם משימה'); await dialog.getByLabel('צוות הכותרת').selectOption('team-c');
+  await expect(dialog.locator('input[type=date], input[type=number]')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'שמירת כותרת' }).click(); await saved(page);
+  const headingState = await planning(page), work = headingState.document.workItems.find((w: any) => w.title === 'כותרת עם משימה');
+  expect(headingState.document.tasks).toEqual(before.document.tasks);
+  const row = page.locator('.work-row').filter({ hasText: 'כותרת עם משימה' });
+  await row.getByRole('button', { name: 'הוספת משימה תחת כותרת עם משימה', exact: true }).click();
+  const editor = page.getByRole('region', { name: 'עריכת משימה' });
+  await editor.getByLabel('שם המשימה', { exact: true }).fill('משימה עם תקופה');
+  await editor.getByLabel('תאריך סיום', { exact: true }).fill('2026-10-21');
+  await editor.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-16');
+  await expect(editor.getByText(/שישי ושבת/)).toBeVisible(); await expect(editor.getByRole('button', { name: 'הוספת משימה', exact: true })).toBeDisabled();
+  expect((await planning(page)).document.tasks).toEqual(before.document.tasks);
+  await editor.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-15'); await expect(editor).toContainText('5 ימי עבודה');
+  await page.screenshot({ path: 'test-results/create-task-editor.png' });
+  await editor.getByRole('button', { name: 'הוספת משימה', exact: true }).click();
+  await expect.poll(async () => (await planning(page)).document.tasks.length).toBe(before.document.tasks.length + 1); await saved(page);
+  const after = await planning(page), task = after.document.tasks.find((t: any) => t.workItemId === work.id);
   expect(task.startDate).toBe('2026-10-15'); expect(task.endDate).toBe('2026-10-21'); expect(task.teamId).toBe('team-c');
-  expect(after.document.tasks.filter((t: any) => t.workItemId !== work.id)).toEqual(before.document.tasks);
-  await expect(page.getByTestId(`work-bar-${work.id}-team-c`)).toBeVisible();
-  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click();
-  await expect.poll(async () => (await planning(page)).document.tasks).toEqual(before.document.tasks);
-  expect((await planning(page)).document.workItems).toEqual(before.document.workItems);
-  await page.getByRole('button', { name: 'החזרת שינוי', exact: true }).click();
-  await expect.poll(async () => (await planning(page)).document.tasks.length).toBe(before.document.tasks.length + 1);
+  await expect(page.getByTestId(`work-bar-${work.id}-team-c`)).toHaveCount(0); await expect(page.getByTestId(`task-bar-${task.id}-team-c`)).toBeVisible();
+  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click(); await saved(page);
+  expect((await planning(page)).document.tasks).toEqual(before.document.tasks); expect((await planning(page)).document.workItems).toEqual(headingState.document.workItems);
+  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click(); await saved(page); expect((await planning(page)).document.workItems).toEqual(before.document.workItems);
+  await page.getByRole('button', { name: 'החזרת שינוי', exact: true }).click(); await saved(page);
+  await page.getByRole('button', { name: 'החזרת שינוי', exact: true }).click(); await saved(page);
   await page.reload(); await saved(page); expect((await planning(page)).document.tasks).toEqual(after.document.tasks);
 });
