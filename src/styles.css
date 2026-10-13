@@ -19,3 +19,5 @@
 
 .heading-actions { display: flex; gap: 8px; padding: 6px 24px; background: var(--surface); }
 .heading-actions button { font-size: 12px; }
+
+.backlog-title-cell{display:flex;align-items:center;gap:10px;min-width:0}.backlog-title-cell .backlog-title{flex:1}.backlog-drag-handle{cursor:grab;padding:6px 8px;flex-shrink:0;font-size:22px;line-height:1;color:#a5b8d2;background:transparent;border:1px solid #31547d}.backlog-drag-handle:active{cursor:grabbing}.backlog-drag-handle:focus-visible{outline:3px solid #8bb3f0;outline-offset:2px}.backlog-row.dragging{opacity:.45}.backlog-row.drop-before{box-shadow:inset 0 3px #8bb3f0}.backlog-row.drop-after{box-shadow:inset 0 -3px #8bb3f0}@media(max-width:900px){.backlog-title-cell{grid-column:1/-1}}

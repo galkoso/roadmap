@@ -30,6 +30,8 @@ export class BacklogPageComponent implements AfterViewInit {
   readonly peopleGroups = computed(() => groupByPeople(this.store.document(), this.tasks()));
   readonly draft = signal<BacklogTask | null>(null); readonly mode = signal<'edit' | 'schedule'>('edit');
   readonly error = signal(''); readonly lastScheduled = signal<string | null>(null); readonly colors = palette;
+  readonly arranging = signal(false); readonly dragging = signal<string | null>(null);
+  readonly dropTarget = signal<{ id: string; after: boolean } | null>(null);
   readonly durationError = signal<{ id: string; message: string } | null>(null);
   readonly statusOptions = Object.entries(statuses); readonly formatted = formatDate;
   incoming: Dependency[] = []; startDate = nextWorkingDay(today()); workingDays: number | null = 5;
@@ -42,6 +44,47 @@ export class BacklogPageComponent implements AfterViewInit {
     this.store.setPreferences({ backlog: { ...view, ...(view.mode === 'people' ? { peopleCollapsed: collapsed } : { collapsed }) } });
   }
   collapsedKeys(): string[] { return this.view().mode === 'people' ? this.view().peopleCollapsed ?? [] : this.view().collapsed; }
+  toggleArranging(): void { this.arranging.update(value => !value); this.endDrag(); }
+  startDrag(event: DragEvent, item: BacklogTask): void {
+    if (!this.arranging() || this.store.importing() || !event.dataTransfer) { event.preventDefault(); return; }
+    this.dragging.set(item.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id);
+  }
+  endDrag(): void { this.dragging.set(null); this.dropTarget.set(null); }
+  dragOver(event: DragEvent, item: BacklogTask, siblings: BacklogTask[]): void {
+    const source = this.dragging();
+    if (!this.arranging() || this.store.importing() || !source || source === item.id || !siblings.some(t => t.id === source)) return;
+    event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    this.dropTarget.set({ id: item.id, after: event.clientY > bounds.top + bounds.height / 2 });
+  }
+  drop(event: DragEvent, item: BacklogTask, siblings: BacklogTask[]): void {
+    event.preventDefault();
+    const source = this.dragging(), target = this.dropTarget();
+    if (source && target?.id === item.id) this.reorder(source, item.id, target.after, siblings);
+    this.endDrag();
+  }
+  reorderKeyboard(event: KeyboardEvent, item: BacklogTask, siblings: BacklogTask[]): void {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+    event.preventDefault();
+    const index = siblings.findIndex(t => t.id === item.id), after = event.key === 'ArrowDown', target = siblings[index + (after ? 1 : -1)];
+    if (target) this.reorder(item.id, target.id, after, siblings);
+  }
+  private reorder(sourceId: string, targetId: string, after: boolean, siblings: BacklogTask[]): void {
+    if (!this.arranging() || this.store.importing() || sourceId === targetId) return;
+    const ids = siblings.map(t => t.id), sourceIndex = ids.indexOf(sourceId);
+    if (sourceIndex < 0 || !ids.includes(targetId)) return;
+    ids.splice(sourceIndex, 1); ids.splice(ids.indexOf(targetId) + (after ? 1 : 0), 0, sourceId);
+    if (ids.every((id, index) => id === siblings[index].id)) return;
+    const doc = clone(this.store.document()), backlog = doc.tasks.filter((t): t is BacklogTask => !isScheduled(t)).sort((a, b) => a.order - b.order);
+    const scope = new Set(ids), byId = new Map(backlog.map(t => [t.id, t]));
+    if (ids.some(id => !byId.has(id))) return;
+    let index = 0;
+    const ordered = backlog.map(t => scope.has(t.id) ? byId.get(ids[index++])! : t);
+    const firstOrder = Math.max(-1, ...doc.tasks.filter(isScheduled).map(t => t.order)) + 1;
+    ordered.forEach((task, position) => task.order = firstOrder + position);
+    try { this.store.commit(doc, 'סדר המשימות עודכן'); }
+    catch (error) { this.store.notice.set((error as Error).message); }
+  }
   assignmentMessage = '';
   draftTeam(item: BacklogTask, teamId: string | null): void {
     this.assignmentMessage = changeTaskTeam(this.store.document(), item, teamId) ? 'האחראי הוסר כי אינו שייך לצוות החדש' : '';
