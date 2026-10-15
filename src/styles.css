@@ -21,3 +21,69 @@
 .heading-actions button { font-size: 12px; }
 
 .backlog-title-cell{display:flex;align-items:center;gap:10px;min-width:0}.backlog-title-cell .backlog-title{flex:1}.backlog-drag-handle{cursor:grab;padding:6px 8px;flex-shrink:0;font-size:22px;line-height:1;color:#a5b8d2;background:transparent;border:1px solid #31547d}.backlog-drag-handle:active{cursor:grabbing}.backlog-drag-handle:focus-visible{outline:3px solid #8bb3f0;outline-offset:2px}.backlog-row.dragging{opacity:.45}.backlog-row.drop-before{box-shadow:inset 0 3px #8bb3f0}.backlog-row.drop-after{box-shadow:inset 0 -3px #8bb3f0}@media(max-width:900px){.backlog-title-cell{grid-column:1/-1}}
+
+/* Backlog hierarchy shares one column layout; collapsed groups reserve only their summary. */
+.backlog-list{--backlog-columns:minmax(0,1fr) 76px 140px 116px;min-height:0}
+.backlog-grid,.backlog-list .backlog-row{display:grid;grid-template-columns:var(--backlog-columns);gap:12px;align-items:center;padding-inline:16px}
+.backlog-columns{min-height:34px;color:#99acc9;font-size:12px;border-bottom:1px solid var(--grid)}
+.backlog-columns>span:not(:first-child){text-align:center}
+.compact-backlog .backlog-work-group{margin:0}
+.backlog-work-summary{min-height:52px;border-bottom:1px solid var(--grid)}
+.backlog-work-summary:hover{background:#1b293b}
+.backlog-work-toggle{display:flex;align-items:center;gap:10px;min-width:0;padding:8px 0;border:0;background:transparent;text-align:start;font-weight:600;line-height:1.5}
+.backlog-work-toggle bdi{overflow-wrap:anywhere;min-width:0}
+.backlog-chevron{width:16px;flex-shrink:0;color:#99acc9;font-size:20px}
+.backlog-task-count{text-align:center}
+.count-badge{display:inline-block;min-width:25px;padding:3px 7px;border-radius:5px;background:#29384d;color:#bbcadf;font-size:12px}
+.backlog-scope{text-align:center;color:#a5b8d2;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.backlog-work-actions,.backlog-task-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+.compact-action{width:32px;height:32px;border:0;background:transparent;font-size:20px;position:relative}
+.compact-action::after{content:attr(data-tooltip);display:none;position:absolute;inset-inline-end:0;bottom:calc(100% + 5px);width:max-content;max-width:240px;white-space:normal;padding:6px 8px;border:1px solid #34445e;border-radius:5px;background:#203047;color:#e2e8f0;font-size:12px;z-index:7;pointer-events:none}
+.compact-action:hover::after,.compact-action:focus-visible::after{display:block}
+.backlog-list [hidden]{display:none}
+.backlog-list .backlog-row{min-height:44px;padding-block:5px;border-top:0;border-bottom:1px solid var(--grid)}
+.backlog-list .backlog-title-cell{grid-column:auto;gap:8px;flex-wrap:wrap}
+.backlog-list .backlog-title{grid-column:auto;gap:8px;flex:1;min-width:100px}
+.backlog-list .backlog-title small{margin-top:2px;font-size:11px}
+.backlog-task-assignment{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%}
+.backlog-task-assignment>select{width:100px;padding:5px;font-size:12px}
+.backlog-task-assignment app-assignee-field{width:120px}
+.backlog-task-assignment .assignee-field{display:flex;align-items:center;gap:5px;font-size:11px;margin:0;flex-wrap:wrap}
+.backlog-task-assignment .assignee-field select{flex:1;width:80px;font-size:12px;margin:0}
+.backlog-task-assignment .assignee-field small{font-size:10px}
+.backlog-list .backlog-work{grid-column:auto;font-size:11px}
+.compact-backlog .backlog-row .backlog-work{visibility:hidden;font-size:0;line-height:0}
+.compact-backlog .backlog-title-cell{padding-inline-start:26px}
+.backlog-list .backlog-duration{margin:0;font-weight:400;justify-content:center;flex-wrap:wrap;gap:4px}
+.backlog-list .backlog-duration input{width:64px}
+.backlog-task-actions>button:first-child{padding:6px;font-size:12px;white-space:nowrap}
+.backlog-task-actions .row-action{min-width:28px;min-height:32px}
+.compact-backlog>.backlog-group-heading{text-align:start;flex-wrap:wrap;gap:8px;padding:12px 16px}
+.compact-backlog>.backlog-group-heading small{margin-inline-start:8px;margin-right:0;background:transparent;font-weight:400;font-size:12px;padding:0}
+.backlog-drag-handle{padding:3px 5px}
+@media(max-width:1100px){.backlog-task-assignment{flex-basis:100%;padding-inline-start:34px}.backlog-list{--backlog-columns:minmax(0,1fr) 60px 120px 110px}}
+@media(max-width:650px){
+  .backlog-list{--backlog-columns:minmax(0,1fr) 48px 80px}
+  .backlog-grid,.backlog-list .backlog-row{gap:6px;padding-inline:10px}
+  .backlog-columns>span:nth-child(3){display:none}
+  .backlog-work-summary{padding-block:5px}
+  .backlog-work-toggle{grid-column:1;grid-row:1}
+  .backlog-task-count{grid-column:2;grid-row:1}
+  .backlog-work-actions{grid-column:3;grid-row:1/3}
+  .backlog-scope{grid-column:1/3;grid-row:2;text-align:start;padding-inline-start:26px}
+  .backlog-list .backlog-row .backlog-title-cell{grid-column:1/-1}
+  .backlog-list .backlog-work{display:none}
+  .backlog-task-scope{grid-column:1}
+  .backlog-task-actions{grid-column:2/4}
+  .backlog-list .backlog-duration{justify-content:flex-start}
+  .backlog-list .backlog-title{min-height:36px}
+  .compact-backlog .backlog-title-cell{padding-inline-start:16px}
+  .compact-action{width:36px;height:36px}
+  .backlog-task-assignment{padding-inline-start:0;flex-wrap:wrap}
+  .backlog-task-assignment select,.backlog-task-actions button,.backlog-drag-handle{min-height:36px}
+  .compact-backlog>.backlog-group-heading small{flex-basis:100%;margin-inline-start:24px;line-height:1.5}
+}
+@media(pointer:coarse){.compact-action{min-width:38px;min-height:44px}.backlog-work-actions{gap:2px}.backlog-work-toggle{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.backlog-page button{transition:none}}
+
+.backlog-search{margin-bottom:16px;max-width:520px}.backlog-search-controls{display:flex;gap:8px;align-items:center}.backlog-search-controls input{margin:0;flex:1}.backlog-search-controls button{flex-shrink:0}

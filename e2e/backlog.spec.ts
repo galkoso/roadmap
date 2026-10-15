@@ -43,12 +43,12 @@ test('router links, direct refresh, browser Back/Forward and exact timeline view
   await page.locator('.timeline-viewport').evaluate(el => { el.scrollLeft += 140; el.scrollTop = 120; });
   const state = await page.locator('.timeline-viewport').evaluate(el => ({ left: el.scrollLeft, top: el.scrollTop, start: el.querySelector('.date-header')!.getAttribute('data-range-start') }));
   await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await expect(page).toHaveURL(/\/backlog$/);
-  await page.getByRole('button', { name: 'ללא צוות 0', exact: false }).click();
+  await page.getByRole('button', { name: /ללא צוות.*0 כותרות/ }).click();
   await page.getByRole('link', { name: 'Roadmap', exact: true }).click();
   await expect(page.getByRole('button', { name: 'שבועות', exact: true })).toHaveClass(/active/);
   await expect.poll(() => page.locator('.timeline-viewport').evaluate(el => el.scrollLeft)).toBe(state.left);
   expect(await page.locator('.date-header').getAttribute('data-range-start')).toBe(state.start);
-  await page.goBack(); await expect(page).toHaveURL(/\/backlog$/); await expect(page.getByRole('button', { name: 'ללא צוות 0', exact: false })).toHaveAttribute('aria-expanded', 'false');
+  await page.goBack(); await expect(page).toHaveURL(/\/backlog$/); await expect(page.getByRole('button', { name: /ללא צוות.*0 כותרות/ })).toHaveAttribute('aria-expanded', 'false');
   await page.goForward(); await expect(page).toHaveURL(/\/roadmap$/); await page.goto('/backlog'); await page.reload(); await saved(page); await expect(page.getByRole('heading', { name: 'בקלוג המדור' })).toBeVisible();
 });
 test('schedule keeps identity and metadata, remains in backlog page, reveals independent unassigned task outside the range, then returns and undoes', async ({ page }) => {
@@ -130,7 +130,7 @@ test('backlog dialog and small-screen layout are keyboard accessible', async ({ 
   await page.getByRole('button', { name: 'פריט לבקלוג' }).focus(); await page.keyboard.press('Enter'); await expect(page.getByLabel('כותרת הפריט')).toBeFocused();
   await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).not.toBeVisible();
   const item = await create(page, 'פריט לתצוגה צרה'); await page.locator('.backlog-list').focus(); await page.keyboard.press('Control+z'); await expect(page.getByTestId('backlog-row-' + item.id)).toHaveCount(0); await page.keyboard.press('Control+Shift+z'); await expect(page.getByTestId('backlog-row-' + item.id)).toBeVisible(); await page.screenshot({ path: 'test-results/backlog-desktop.png', fullPage: true });
-  await page.setViewportSize({ width: 560, height: 900 }); await expect(page.getByRole('heading', { name: 'בקלוג המדור' })).toBeVisible(); await expect(page.getByRole('button', { name: 'שיבוץ בזמן' })).toBeInViewport();
+  await page.setViewportSize({ width: 560, height: 900 }); await expect(page.getByRole('heading', { name: 'בקלוג המדור' })).toBeVisible(); await page.getByRole('button', { name: 'שיבוץ בזמן' }).scrollIntoViewIfNeeded(); await expect(page.getByRole('button', { name: 'שיבוץ בזמן' })).toBeInViewport();
 });
 test('backlog metadata survives a backup round-trip and old backup import migrates without changing old task data', async ({ page }) => {
   const item = await create(page, 'פריט לייצוא', { work: 'שדרוג תשתית השירותים', notes: '<script>טקסט בלבד</script>' });

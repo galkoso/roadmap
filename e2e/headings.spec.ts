@@ -10,14 +10,14 @@ test('team heading is date-free, stays visible on both pages and contains schedu
   const group = page.locator('.backlog-work-group').filter({ hasText: 'כותרת צוות לבדיקה' });
   await expect(group).toHaveCount(1);
   await expect(group.locator('xpath=ancestor::section[@data-group][1]')).toHaveAttribute('data-group', 'team:team-b');
-  await group.getByRole('button', { name: 'משימה תחת הכותרת' }).click();
+  await group.getByRole('button', { name: 'הוספת משימה תחת כותרת צוות לבדיקה' }).click();
   const taskDialog = page.getByRole('dialog', { name: 'פריט לבקלוג', exact: true });
   await expect(taskDialog.getByLabel('צוות', { exact: true })).toHaveValue('team-b');
   await expect(taskDialog.getByLabel('כותרת', { exact: true })).not.toHaveValue('');
   await taskDialog.getByLabel('כותרת הפריט').fill('משימה בבקלוג תחת כותרת');
   await taskDialog.getByRole('button', { name: 'שמירת פריט', exact: true }).click();
   await expect(group.locator('.backlog-row')).toHaveCount(1);
-  await expect(group.locator(':scope > .backlog-group-heading')).not.toContainText('ימי עבודה');
+  await expect(group.locator('.backlog-scope')).toContainText('5 ימי עבודה');
   await expect(page.locator('.save-state')).toHaveText('נשמר'); await page.reload();
   await expect(group.locator('.backlog-row')).toHaveCount(1);
   await page.getByRole('link', { name: 'Roadmap', exact: true }).click();
