@@ -1,0 +1,24 @@
+  <dialog #dialog class="create-work-dialog backlog-dialog" aria-labelledby="backlog-dialog-heading" (close)="nativeClose()">
+    @if (draft(); as item) { <div class="panel-heading"><div><span class="eyebrow">{{ mode() === 'schedule' ? 'מהבקלוג לציר הזמן' : 'פרטי בקלוג' }}</span><h2 id="backlog-dialog-heading">{{ mode() === 'schedule' ? 'שיבוץ בזמן' : 'פריט לבקלוג' }}</h2></div><button class="icon-button" aria-label="סגירת עריכת בקלוג" (click)="close()">×</button></div>
+      <form (ngSubmit)="mode() === 'schedule' ? schedule() : save()" novalidate>
+        @if (mode() === 'edit') { <label>כותרת הפריט<input name="backlog-title" [(ngModel)]="item.title" required maxlength="200" autofocus></label> } @else { <p class="schedule-item-title">{{ item.title }}</p> }
+        <div class="field-grid"><label>צוות<select aria-label="צוות" name="backlog-team" [ngModel]="item.teamId" (ngModelChange)="draftTeam(item, $event)"><option [ngValue]="null">ללא צוות</option>@for (team of store.document().teams; track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label><label>כותרת<select aria-label="כותרת" name="backlog-work" [(ngModel)]="item.workItemId"><option [ngValue]="null">ללא כותרת</option>@for (work of availableHeadings(item.teamId); track work.id) { <option [ngValue]="work.id">{{ work.title }}</option> }</select></label></div>
+        <app-assignee-field [task]="item" (changed)="item.assigneeId = $event"/>
+        @if (assignmentMessage) { <p class="field-hint" role="status">{{ assignmentMessage }}</p> }
+        @if (mode() === 'edit') {
+          <label>משך משוער בימי עבודה<input type="number" name="backlog-estimate" [(ngModel)]="workingDays" min="1" max="10000" step="1" dir="ltr" required></label>
+          <p class="field-hint">ראשון–חמישי · המשך ישמש כברירת מחדל בשיבוץ בציר הזמן</p>
+          <label>סטטוס<select aria-label="סטטוס" name="backlog-status" [(ngModel)]="item.status">@for (status of statusOptions; track status[0]) { <option [value]="status[0]">{{ status[1] }}</option> }</select></label>
+          <label>צבע הפריט</label><div class="color-palette">@for (color of colors; track color) { <button type="button" [style.background]="color" [class.chosen]="item.color === color" [attr.aria-label]="'בחירת צבע ' + color" (click)="item.color = color"></button> }<input type="color" name="backlog-color" [(ngModel)]="item.color" aria-label="צבע מותאם אישית"></div>
+          <label>תיאור / הערות<textarea name="backlog-notes" [(ngModel)]="item.notes" rows="3"></textarea></label>
+          @if (incoming.length) { <h3>תלויות קיימות</h3>@for (dependency of incoming; track dependency.id) { <div class="dependency-option"><span>{{ predecessor(dependency.predecessorId)?.title }} · {{ teamName(predecessor(dependency.predecessorId)?.teamId ?? null) }}</span><button type="button" [attr.aria-label]="'הסרת תלות ב־' + predecessor(dependency.predecessorId)?.title" (click)="removeDependency(dependency.id)">הסרת תלות</button></div> } }
+        } @else {
+          <div class="field-grid"><label>תאריך התחלה<input type="date" name="schedule-start" [(ngModel)]="startDate" dir="ltr" required></label><label>מספר ימי עבודה<input type="number" name="schedule-duration" [(ngModel)]="workingDays" min="1" max="10000" step="1" dir="ltr" required></label></div>
+          @let preview = schedulePreview();
+          @if (preview.error) { <p class="field-error" role="alert">{{ preview.error }}</p><button type="button" (click)="mode.set('edit'); error.set('')">עריכת הפריט והתלויות</button> } @else if (preview.start && preview.end) { <div class="schedule-summary"><span>תקופת השיבוץ</span><strong dir="ltr">{{ formatted(preview.start) }} – {{ formatted(preview.end) }}</strong><small>ראשון–חמישי · הסיום כולל</small></div>@if (preview.start !== startDate) { <p class="field-hint">ההתחלה הוצמדה למועד חוקי הנדרש מהתלויות: {{ formatted(preview.start) }}</p> }@if (preview.changed.length) { <p class="field-hint">משימות שיתעדכנו: {{ preview.changed.join(', ') }}</p> } }
+        }
+        @if (error()) { <p class="field-error" role="alert">{{ error() }}</p> }
+        <div class="form-actions dialog-actions"><button type="submit" class="primary" [disabled]="store.importing()">{{ mode() === 'schedule' ? 'אישור שיבוץ' : 'שמירת פריט' }}</button><button type="button" (click)="close()">ביטול</button>@if (!isNewItem() && mode() === 'edit') { <button type="button" class="danger text-button" (click)="remove(item)">מחיקת פריט</button> }</div>
+      </form>
+    }
+  </dialog>

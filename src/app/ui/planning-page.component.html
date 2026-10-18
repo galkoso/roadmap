@@ -1,0 +1,40 @@
+<section class="planning-page" dir="rtl">
+  <header class="app-heading"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><h1>תכנון חודשי</h1><p>היקף צוותי ובחירת משימות</p></div><span class="save-state" role="status" [class.failed]="!!store.error()"><i></i>{{ store.saveStatus() }}</span></header>
+  @if (store.loaded()) {
+    <nav class="planning-teams" aria-label="בחירת צוות לתכנון">@for (item of teams(); track item.id) { <button [class.active]="team().id === item.id" [attr.aria-pressed]="team().id === item.id" (click)="selectTeam(item.id)">{{ item.name }}</button> }</nav>
+    @if (error()) { <p class="field-error" role="alert">{{ error() }}</p> }
+    @let budget = summary();
+    <section class="planning-capacity" aria-label="קיבולת הצוות">
+      <form class="planning-budget-input" (submit)="saveCapacity($event)" novalidate><label for="team-capacity">ימי עבודה זמינים לצוות</label><div class="planning-number-controls"><input id="team-capacity" type="number" min="0" max="1000000" step="0.5" dir="ltr" placeholder="טרם הוזן" [value]="capacityInput()" (input)="draftCapacity($event)"><button type="submit" [disabled]="store.importing()">שמירה</button></div></form>
+      <div class="planning-metric"><span>היקף המשימות בתכנון</span><strong data-testid="planning-effort">{{ budget.known }} <small>ימי עבודה</small></strong>@if (budget.missing) { <small class="planning-warning">{{ budget.missing }} משימות עם חסר היקף · סכום ידוע בלבד</small> }</div>
+      <div class="planning-metric" [class.over-capacity]="budget.remaining !== null && budget.remaining < 0"><span>יתרה</span><strong data-testid="planning-remaining">{{ budget.remaining ?? 'טרם הוזנה קיבולת' }}@if (budget.remaining !== null) { <small>ימי עבודה</small> }</strong>@if (budget.missing) { <small>יתרה לפי היקף ידוע בלבד; אינה סופית</small> }@if (budget.remaining !== null && budget.remaining < 0) { <small class="planning-warning" role="status">חריגה של {{ -budget.remaining }} ימי עבודה{{ budget.missing ? ' לפחות' : '' }}</small> }</div>
+    </section>
+    <section class="planning-breakdown"><button class="planning-breakdown-toggle" [attr.aria-expanded]="breakdownOpen()" aria-controls="planning-members" (click)="toggleBreakdown()"><span aria-hidden="true">{{ breakdownOpen() ? '⌄' : '‹' }}</span> פירוט לפי חיילים</button>
+      <div id="planning-members" [hidden]="!breakdownOpen()">
+        @if (breakdownOpen()) {
+          <p class="field-hint">פירוט זמינות בלבד. ימי העבודה של הצוות נקבעים ידנית; המשימות נבחרות לצוות.</p>
+          <div class="planning-member-list">@for (member of members(); track member.id) { <form class="planning-member" (submit)="saveCapacity($event, member.id)" novalidate><label [for]="'availability-' + member.id">{{ memberName(member.id) }}</label><div class="planning-number-controls"><input [id]="'availability-' + member.id" type="number" min="0" max="1000000" step="0.5" dir="ltr" placeholder="טרם הוזן" [value]="capacityInput(member.id)" (input)="draftCapacity($event, member.id)"><button type="submit" [disabled]="store.importing()">שמירה</button></div></form> } @empty { <p class="backlog-empty">אין חיילים בצוות. ניתן להוסיף או להעביר חיילים דרך ניהול אנשי הצוות ב־Roadmap.</p> }</div>
+          <div class="planning-distribution" role="status"><span>סך הימים שחולקו לחיילים: <b>{{ budget.distributed }}</b></span><span>ימי עבודה שטרם חולקו: <b>{{ budget.undistributed ?? 'טרם הוזנה קיבולת' }}</b></span>@if (budget.undistributed !== null && budget.undistributed < 0) { <span class="planning-warning">הפירוט לחיילים חורג ב־{{ -budget.undistributed }} ימי עבודה מקיבולת הצוות</span> }</div>
+        }
+      </div>
+    </section>
+    @if (unresolved().length) { <section class="planning-unresolved" aria-label="משימות בתכנון ללא צוות"><h2>משימות בתכנון ללא צוות</h2><p>שיוך הצוות הוסר. יש לעדכן את הצוות כדי לכלול את המשימה בסיכומי התכנון.</p>@for (task of unresolved(); track task.id) { <div><span>{{ task.title }}</span><button (click)="edit(task)">עדכון צוות</button><button (click)="select(task, false)">הסרה מהתכנון</button></div> }</section> }
+    <div class="planning-panes">
+      @for (pane of panes; track pane.key) { <section class="planning-pane" [attr.data-pane]="pane.key" [attr.aria-labelledby]="'pane-' + pane.key"><h2 [id]="'pane-' + pane.key">{{ pane.title }} <small>{{ pane.key === 'selected' ? selected().length : candidates().length }}</small></h2>
+        @for (group of groups()[pane.key]; track group.workItemId) { @let sum = total(group.tasks); @let closed = collapsed(pane.key, group.workItemId);
+          <section class="planning-work" [attr.data-work]="group.workItemId ?? '__standalone__'">
+            <button class="planning-work-toggle" [attr.aria-expanded]="!closed" [attr.aria-controls]="contentId(pane.key, group.workItemId)" (click)="toggleGroup(pane.key, group.workItemId)"><span aria-hidden="true">{{ closed ? '‹' : '⌄' }}</span><bdi>{{ group.title }}</bdi><small>{{ group.tasks.length }} משימות · {{ sum.known }} ימי עבודה@if (sum.missing) { · {{ sum.missing }} חסר היקף }</small></button>
+            <div [id]="contentId(pane.key, group.workItemId)" [hidden]="closed">
+              @if (!closed) { @for (task of group.tasks; track task.id) { <div class="planning-task" [attr.data-task]="task.id"><button class="planning-task-title" (click)="edit(task)"><i [style.background]="task.color" aria-hidden="true"></i><span>{{ task.title }}<small>{{ statusOptions[task.status] }}@if (task.assigneeId) { · {{ memberName(task.assigneeId) }} }</small></span></button><span class="planning-task-effort" [class.planning-warning]="effort(task) === null">{{ effort(task) === null ? 'חסר היקף' : effort(task) + ' ימי עבודה' }}</span>
+                <div class="planning-task-actions">@if (effort(task) === null) { <button (click)="edit(task)">השלמת היקף</button> }@if (pane.key === 'candidates') { <button (click)="select(task, true)" [disabled]="store.importing()">＋ לתכנון</button> } @else { @if (scheduled(task)) { <span class="planning-scheduled">שובצה ב־Roadmap</span><button (click)="showInRoadmap(task.id)">הצג בציר הזמן</button> } @else { <button (click)="edit(task, true)" [disabled]="store.importing()">ל־Roadmap</button> }<button [attr.aria-label]="'הסרה מהתכנון ' + task.title" (click)="select(task, false)" [disabled]="store.importing()">הסרה</button> }</div>
+              </div> } }
+            </div>
+          </section>
+        } @empty { <p class="backlog-empty">@if (pane.key === 'selected') { עדיין לא נבחרו משימות לתכנון. הוסיפו משימות מהרשימה לבחירה. } @else if (selected().length) { אין משימות נוספות מהבקלוג לבחירה בצוות זה. } @else { אין משימות בקלוג המשויכות לצוות זה. } </p> }
+      </section> }
+    </div>
+    <p class="field-hint planning-note">הוספה לתכנון משאירה את המשימה בבקלוג המקורי. משימות ללא צוות אפשר לשייך דרך <a routerLink="/backlog">הבקלוג</a>.</p>
+    <div class="notice" role="status">{{ store.notice() }}</div>
+  } @else { <div class="loading">{{ store.saveStatus() }}</div> }
+  <app-backlog-task-dialog/>
+</section>

@@ -4,7 +4,8 @@ import { initialPreferences, seedDocument } from './seed';
 import { assignTask, personKey } from './members';
 import { today } from './dates';
 import { RevisionConflict, RoadmapStorage } from './storage';
-import { validateDocument, validatePreferences } from './validation';
+import { reconcilePlanning, reconcilePlanningPreferences } from './planning';
+import { validateDocument, validatePlanningPreferenceReferences, validatePreferences } from './validation';
 @Injectable({ providedIn: 'root' })
 export class RoadmapStore {
   readonly document = signal<RoadmapDocument>(seedDocument());
@@ -34,6 +35,7 @@ export class RoadmapStore {
       if (saved) this.rawRecovery.set(saved);
       if (saved) {
         this.document.set(validateDocument(saved.document)); this.preferences.set({ ...validatePreferences(saved.preferences), center: today(), scrollLeft: undefined, timelineAnchor: undefined, scrollTop: 0 });
+        validatePlanningPreferenceReferences(this.preferences(), this.document());
         this.persistedRevision = saved.document.revision; this.saveStatus.set(saved.document.schemaVersion === SCHEMA_VERSION ? 'נשמר' : 'מעדכן סכימה...'); this.rawRecovery.set(null);
       }
       this.loaded.set(true);
@@ -44,9 +46,12 @@ export class RoadmapStore {
     }
   }
   private message(error: unknown): string { return error instanceof Error ? error.message : 'השמירה המקומית נכשלה'; }
-  commit(next: RoadmapDocument, message = 'התכנון עודכן'): void {
+  commit(next: RoadmapDocument, message = 'התכנון עודכן', patch?: Partial<ViewPreferences>): void {
     if (!this.loaded() || this.importing()) return;
-    next = validateDocument(next);
+    next = clone(next); reconcilePlanning(next); next = validateDocument(next);
+    const preferences = validatePreferences({ ...this.preferences(), ...patch });
+    if (preferences.planning) preferences.planning = reconcilePlanningPreferences(preferences.planning, next);
+    this.preferences.set(preferences);
     this.undoStack.update(stack => [...stack.slice(-49), clone(this.document())]); this.redoStack.set([]);
     this.apply(next, message);
   }
@@ -63,6 +68,7 @@ export class RoadmapStore {
     this.assignmentFocus.set(changed[0].id);
   }
   private apply(next: RoadmapDocument, message: string): void {
+    if (this.preferences().planning) this.preferences.update(p => ({ ...p, planning: reconcilePlanningPreferences(p.planning!, next) }));
     this.openAssignmentGroups(next);
     next.revision = this.document().revision; this.document.set(next); this.preview.set(null); this.notice.set(message); this.queueSave();
   }
@@ -99,6 +105,7 @@ export class RoadmapStore {
     try {
       const saved = await this.storage.load(); if (!saved) throw new Error('לא נמצא תכנון שמור');
       const doc = validateDocument(saved.document), prefs = validatePreferences(saved.preferences);
+      validatePlanningPreferenceReferences(prefs, doc);
       this.document.set(doc); this.preferences.set(prefs); this.persistedRevision = doc.revision;
       this.failed = false; this.conflict.set(false); this.error.set(''); this.loaded.set(true);
       this.undoStack.set([]); this.redoStack.set([]); this.preview.set(null); this.saveStatus.set('נשמר');
@@ -106,6 +113,7 @@ export class RoadmapStore {
   }
   async importBackup(backup: Backup): Promise<void> {
     const doc = validateDocument(backup.document), preferences = validatePreferences(backup.preferences);
+    validatePlanningPreferenceReferences(preferences, doc);
     if (this.importing()) throw new Error('ייבוא כבר מתבצע');
     this.importing.set(true);
     await this.chain;

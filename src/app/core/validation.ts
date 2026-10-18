@@ -1,5 +1,6 @@
 import { Backup, isScheduled, RoadmapDocument, SCHEMA_VERSION, ViewPreferences } from './model';
 import { addWorkingDays, epoch, validateRange } from './dates';
+import { validCapacityDays } from './planning';
 import { topological } from './scheduler';
 function assert(test: unknown, message = 'מבנה קובץ הגיבוי אינו תקין'): asserts test { if (!test) throw new Error(message); }
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -7,7 +8,7 @@ const text = (value: unknown): value is string => typeof value === 'string';
 const order = (value: unknown): boolean => Number.isSafeInteger(value) && Number(value) >= 0;
 export function validateDocument(value: unknown): RoadmapDocument {
   assert(record(value));
-  assert([1, 2, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1, 2 ו־3');
+  assert([1, 2, 3, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1–4');
   if (value['schemaVersion'] === 1) {
     assert(Array.isArray(value['tasks']));
     for (const task of value['tasks']) assert(record(task) && text(task['teamId']) && text(task['workItemId']) && text(task['startDate']) && text(task['endDate']) && task['planningState'] === undefined, 'נתונים ישנים אינם תקינים; לא שונו ולא נמחקו');
@@ -19,8 +20,14 @@ export function validateDocument(value: unknown): RoadmapDocument {
   if (value['schemaVersion'] === 2) {
     assert(Array.isArray(value['tasks']));
     const migrated = structuredClone(value);
-    migrated['schemaVersion'] = SCHEMA_VERSION; migrated['members'] = [];
+    migrated['schemaVersion'] = 3; migrated['members'] = [];
     migrated['tasks'] = (value['tasks'] as Record<string, unknown>[]).map(task => ({ ...task, assigneeId: null }));
+    return validateDocument(migrated);
+  }
+  if (value['schemaVersion'] === 3) {
+    const migrated = structuredClone(value);
+    migrated['schemaVersion'] = SCHEMA_VERSION;
+    migrated['planning'] = { selectedTaskIds: [], teamCapacities: [] };
     return validateDocument(migrated);
   }
   assert(order(value['revision']));
@@ -58,6 +65,24 @@ export function validateDocument(value: unknown): RoadmapDocument {
     if (isScheduled(t)) { assert(text(t.startDate) && text(t.endDate)); validateRange(t.startDate, t.endDate); }
     else assert(t.startDate === undefined && t.endDate === undefined, 'פריט בקלוג אינו יכול להכיל תאריכי דמה');
   }
+  const planning = value['planning']; assert(record(planning), 'מצב התכנון אינו תקין');
+  const selected = planning['selectedTaskIds'], capacities = planning['teamCapacities'];
+  assert(Array.isArray(selected) && selected.length <= 10000 && selected.every(text), 'בחירת משימות אינה תקינה');
+  assert(new Set(selected).size === selected.length && selected.every(id => doc.tasks.some(task => task.id === id)), 'בחירת משימות כפולה או מפנה למשימה חסרה');
+  assert(Array.isArray(capacities) && capacities.length <= 10000, 'קיבולת צוותים אינה תקינה');
+  const capacityTeams = new Set<string>();
+  for (const capacity of capacities) {
+    assert(record(capacity) && text(capacity['teamId']) && doc.teams.some(team => team.id === capacity['teamId']) && !capacityTeams.has(capacity['teamId']), 'צוות קיבולת חסר או כפול');
+    capacityTeams.add(capacity['teamId']);
+    assert(capacity['availableWorkingDays'] === null || validCapacityDays(capacity['availableWorkingDays']), 'ימי עבודה זמינים אינם תקינים');
+    const availability = capacity['memberAvailability']; assert(Array.isArray(availability) && availability.length <= 10000);
+    const members = new Set<string>();
+    for (const entry of availability) {
+      assert(record(entry) && text(entry['memberId']) && !members.has(entry['memberId']) &&
+        doc.members.some(member => member.id === entry['memberId'] && member.teamId === capacity['teamId']), 'פירוט חיילים חסר, כפול או שייך לצוות אחר');
+      members.add(entry['memberId']); assert(validCapacityDays(entry['availableWorkingDays']), 'ימי עבודה לחייל אינם תקינים');
+    }
+  }
   topological(doc);
   for (const d of doc.dependencies) {
     const p = doc.tasks.find(t => t.id === d.predecessorId)!, s = doc.tasks.find(t => t.id === d.successorId)!;
@@ -87,15 +112,42 @@ export function validatePreferences(value: unknown): ViewPreferences {
   if (record(value['backlog'])) {
     const keys = value['backlog']['peopleCollapsed']; assert(keys === undefined || (Array.isArray(keys) && keys.every(text)));
   }
+  if (value['planning'] !== undefined) {
+    const prefs = value['planning']; assert(record(prefs));
+    assert(prefs['activeTeamId'] === null || text(prefs['activeTeamId']));
+    assert(Array.isArray(prefs['expandedTeamIds']) && prefs['expandedTeamIds'].length <= 10000 && prefs['expandedTeamIds'].every(text));
+    assert(new Set(prefs['expandedTeamIds']).size === prefs['expandedTeamIds'].length);
+    assert(Array.isArray(prefs['collapsedGroups']) && prefs['collapsedGroups'].length <= 10000);
+    const keys = new Set<string>();
+    for (const group of prefs['collapsedGroups']) {
+      assert(record(group) && text(group['teamId']) && ['selected', 'candidates'].includes(String(group['pane'])) && (group['workItemId'] === null || text(group['workItemId'])));
+      const key = JSON.stringify([group['teamId'], group['pane'], group['workItemId']]);
+      assert(!keys.has(key), 'קבוצת תכנון כפולה'); keys.add(key);
+    }
+  }
   assert(Array.isArray(value['collapsed']) && value['collapsed'].every(text));
   return structuredClone(value) as unknown as ViewPreferences;
 }
 export function parseBackup(raw: string): Backup {
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new Error('הקובץ אינו JSON תקין'); }
-  assert(record(value)); assert([1, 2, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת');
+  assert(record(value)); assert([1, 2, 3, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת');
   assert(record(value['document']) && value['document']['schemaVersion'] === value['schemaVersion'], 'גרסת המסמך אינה תואמת לגרסת הגיבוי');
   assert(text(value['exportedAt']) && Number.isFinite(Date.parse(value['exportedAt'])));
-  return { schemaVersion: SCHEMA_VERSION, exportedAt: value['exportedAt'], document: validateDocument(value['document']), preferences: validatePreferences(value['preferences']) };
+  const document = validateDocument(value['document']), preferences = validatePreferences(value['preferences']);
+  validatePlanningPreferenceReferences(preferences, document);
+  return { schemaVersion: SCHEMA_VERSION, exportedAt: value['exportedAt'], document, preferences };
 }
-export const exportBackup = (document: RoadmapDocument, preferences: ViewPreferences): string => JSON.stringify({ schemaVersion: SCHEMA_VERSION, exportedAt: new Date().toISOString(), document, preferences }, null, 2);
+export function exportBackup(document: RoadmapDocument, preferences: ViewPreferences): string {
+  const valid = validateDocument(document), prefs = validatePreferences(preferences);
+  validatePlanningPreferenceReferences(prefs, valid);
+  return JSON.stringify({ schemaVersion: SCHEMA_VERSION, exportedAt: new Date().toISOString(), document: valid, preferences: prefs }, null, 2);
+}
+
+export function validatePlanningPreferenceReferences(preferences: ViewPreferences, doc: RoadmapDocument): void {
+  const prefs = preferences.planning; if (!prefs) return;
+  const teams = new Set(doc.teams.map(team => team.id)), works = new Set(doc.workItems.map(work => work.id));
+  assert(prefs.activeTeamId === null || teams.has(prefs.activeTeamId), 'צוות התכנון הפעיל אינו קיים');
+  assert(prefs.expandedTeamIds.every(id => teams.has(id)), 'צוות בפירוט חיילים אינו קיים');
+  assert(prefs.collapsedGroups.every(group => teams.has(group.teamId) && (group.workItemId === null || works.has(group.workItemId))), 'קבוצת תכנון מפנה לצוות או וקטור חסר');
+}

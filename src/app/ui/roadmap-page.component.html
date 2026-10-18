@@ -3,10 +3,6 @@
   <section class="toolbar" aria-label="כלי תכנון">
     <button class="primary add-work" (click)="createWorkDialog.open()" [disabled]="!store.loaded()"><span>＋</span> כותרת חדשה</button><button (click)="addTask('__standalone__')" [disabled]="!store.loaded()">＋ משימה חדשה</button>
     <div class="segmented" aria-label="רמת תצוגה"><button [class.active]="store.preferences().mode === 'weeks'" (click)="setMode('weeks')">שבועות</button><button [class.active]="store.preferences().mode === 'months'" (click)="setMode('months')">חודשים</button><button [class.active]="store.preferences().mode === 'quarters'" (click)="setMode('quarters')">רבעונים</button></div>
-    <div class="navigation"><button class="icon-button" aria-label="תקופה קודמת" (click)="navigate(-1)">→</button><button (click)="goToday()">היום</button><button class="icon-button" aria-label="תקופה הבאה" (click)="navigate(1)">←</button></div>
-    <div class="year-navigation" aria-label="ניווט שנתי"><button (click)="navigateYear(-1)" aria-label="שנה אחורה" title="מעבר שנה אחורה">שנה אחורה</button><button (click)="navigateYear(1)" aria-label="שנה קדימה" title="מעבר שנה קדימה">שנה קדימה</button></div>
-    <div class="zoom"><button class="icon-button" aria-label="התקרבות" (click)="zoom(1)">＋</button><button class="icon-button" aria-label="התרחקות" (click)="zoom(-1)">−</button></div>
-    <div class="history"><button class="icon-button" aria-label="ביטול שינוי" title="Undo · Ctrl+Z" [disabled]="!store.undoStack().length" (click)="store.undo(); closeEditor()">↶</button><button class="icon-button" aria-label="החזרת שינוי" title="Redo · Ctrl+Shift+Z" [disabled]="!store.redoStack().length" (click)="store.redo(); closeEditor()">↷</button></div>
     <app-members-dialog/>
     <label class="grouping-control">תצוגה<select aria-label="תצוגת Roadmap" [ngModel]="store.preferences().grouping ?? 'work'" (ngModelChange)="setGrouping($event)"><option value="work">לפי עבודות</option><option value="people">לפי אנשים</option></select></label>
     <button class="manage-teams" (click)="showPanel('teams')" [disabled]="!store.loaded()"><span aria-hidden="true">✎</span> עריכת צוותים</button>

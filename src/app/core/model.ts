@@ -11,16 +11,29 @@ export interface BacklogTask extends TaskBase { planningState: 'backlog'; startD
 export type Task = ScheduledTask | BacklogTask;
 export const isScheduled = (task: Task): task is ScheduledTask => task.planningState === 'scheduled';
 export interface Dependency { id: string; predecessorId: string; successorId: string; type: 'finish_to_start'; lagWorkingDays: number }
+export interface TeamCapacity {
+  teamId: string; availableWorkingDays: number | null;
+  memberAvailability: { memberId: string; availableWorkingDays: number }[];
+}
+export interface PlanningState { selectedTaskIds: string[]; teamCapacities: TeamCapacity[] }
+export type PlanningPane = 'selected' | 'candidates';
+export interface PlanningPreferences {
+  activeTeamId: string | null;
+  collapsedGroups: { teamId: string; pane: PlanningPane; workItemId: string | null }[];
+  expandedTeamIds: string[];
+}
 export interface RoadmapDocument {
   schemaVersion: number; revision: number; teams: Team[]; members: TeamMember[]; workItems: WorkItem[]; tasks: Task[]; dependencies: Dependency[];
+  planning: PlanningState;
 }
 export interface ViewPreferences {
   mode: 'weeks' | 'months' | 'quarters'; dayWidth: number; center: string; collapsed: string[]; scrollLeft?: number;
   timelineAnchor?: string; scrollTop?: number; grouping?: 'work' | 'people'; peopleCollapsed?: string[];
   backlog?: { mode: 'teams' | 'people' | 'list'; collapsed: string[]; peopleCollapsed?: string[]; scrollTop: number };
+  planning?: PlanningPreferences;
 }
 export interface Backup { schemaVersion: number; exportedAt: string; document: RoadmapDocument; preferences: ViewPreferences }
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const statuses: Record<TaskStatus, string> = { planned: 'מתוכננת', in_progress: 'בביצוע', completed: 'הושלמה' };
 export const palette = ['#3975d5', '#8c62c7', '#239b87', '#de9950', '#d66883', '#64748b'];
 export const uid = (): string => crypto.randomUUID();

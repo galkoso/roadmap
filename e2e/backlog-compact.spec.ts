@@ -29,12 +29,16 @@ test.beforeEach(async ({ page }) => {
 });
 const teamA = (page: Page) => page.locator('[data-group="team:team-a"]');
 const sharedA = (page: Page) => teamA(page).locator('[data-work="shared"]');
+async function expandWorks(page: Page, expanded: boolean) {
+  const toggles = page.locator(`.backlog-work-toggle[aria-expanded="${!expanded}"]`);
+  while (await toggles.count()) await toggles.first().click();
+}
 
-test('compact projections toggle independently, persist and derive expand-all state', async ({ page }) => {
+test('compact projections toggle independently and persist', async ({ page }) => {
   const group = teamA(page), shared = sharedA(page), toggle = shared.locator('.backlog-work-toggle');
   await expect(group.locator('.backlog-row')).toHaveCount(0);
   await expect(group.locator('.backlog-work-summary')).toHaveCount(3);
-  await expect(group.locator('.backlog-group-heading')).toContainText('3 כותרות · 2 פריטים · 5 ימי עבודה');
+  await expect(group.locator('.backlog-group-heading')).toContainText('3 וקטורים · 2 משימות · 5 ימי עבודה');
   await toggle.focus(); await toggle.press('Enter');
   await expect(shared.getByTestId('backlog-row-a')).toBeVisible();
   await expect(group.getByTestId('backlog-row-c')).toHaveCount(0);
@@ -46,12 +50,9 @@ test('compact projections toggle independently, persist and derive expand-all st
   await page.getByRole('link', { name: 'Roadmap', exact: true }).click();
   await page.getByRole('link', { name: 'בקלוג', exact: true }).click();
   await expect(other).toHaveAttribute('aria-expanded', 'false');
-  await page.getByRole('button', { name: 'פתיחת הכול', exact: true }).click();
+  await expandWorks(page, true);
   await expect(page.locator('.backlog-row')).toHaveCount(3);
-  await expect(page.getByRole('button', { name: 'קיפול הכול', exact: true })).toBeVisible();
-  await toggle.click(); await expect(page.getByRole('button', { name: 'פתיחת הכול', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'פתיחת הכול', exact: true }).click();
-  await page.getByRole('button', { name: 'קיפול הכול', exact: true }).click();
+  await expandWorks(page, false);
   await expect(page.locator('.backlog-row')).toHaveCount(0);
   await expect(group.locator('.backlog-group-heading')).toHaveAttribute('aria-expanded', 'true');
   await group.locator('.backlog-group-heading').click();
@@ -98,12 +99,12 @@ for (const width of [1440, 390]) {
     const rename = page.getByRole('dialog', { name: 'עריכת כותרת', exact: true });
     await rename.getByLabel('שם הכותרת').fill('כותרת עברית ארוכה עם שם Zetro ופרטים נוספים לבדיקת גלישה תקינה ושמירת פעולות זמינות');
     await rename.getByRole('button', { name: 'שמירת כותרת', exact: true }).click();
-    await page.getByRole('button', { name: 'פתיחת הכול', exact: true }).click();
-    await page.getByRole('button', { name: 'קיפול הכול', exact: true }).click();
+    await expandWorks(page, true);
+    await expandWorks(page, false);
     await page.screenshot({ path: `test-results/compact-${width}-collapsed.png`, fullPage: true });
     await sharedA(page).locator('.backlog-work-toggle').click();
     await page.screenshot({ path: `test-results/compact-${width}-one.png`, fullPage: true });
-    await page.getByRole('button', { name: 'פתיחת הכול', exact: true }).click();
+    await expandWorks(page, true);
     await page.screenshot({ path: `test-results/compact-${width}-all.png`, fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await page.locator('.backlog-list').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
@@ -111,19 +112,13 @@ for (const width of [1440, 390]) {
   });
 }
 
-test('task search filters every view, reveals collapsed matches and restores groups when cleared', async ({ page }) => {
+test('task search reveals collapsed matches and restores groups when cleared', async ({ page }) => {
   const before = await stored(page);
   const search = page.getByRole('searchbox', { name: 'חיפוש משימות', exact: true });
   await search.fill('  ראשונה  ');
   await expect(page.locator('.backlog-row')).toHaveCount(1);
   await expect(page.getByTestId('backlog-row-a')).toBeVisible();
-  await expect(page.locator('.backlog-count')).toContainText('1 מתוך 3');
   await expect(page.locator('[data-work="empty"]')).toHaveCount(0);
-  for (const mode of ['לפי אנשים', 'רשימה אחת', 'לפי עבודות']) {
-    await page.getByRole('button', { name: mode, exact: true }).click(); await saved(page);
-    await expect(page.locator('.backlog-row')).toHaveCount(1);
-    await expect(page.getByTestId('backlog-row-a')).toBeVisible();
-  }
   await sharedA(page).locator('.backlog-work-toggle').click();
   await expect(page.locator('.backlog-row')).toHaveCount(0);
   await search.fill('משותפת');
@@ -139,3 +134,28 @@ test('task search filters every view, reveals collapsed matches and restores gro
   expect(after.document).toEqual({ ...before.document, revision: after.document.revision });
   expect(after.preferences.backlog.collapsed).toEqual(before.preferences.backlog.collapsed);
 });
+
+for (const mode of ['people', 'list'] as const) {
+  test(`simplified backlog shows works even with saved ${mode} preference`, async ({ page }) => {
+    const before = await stored(page);
+    await page.evaluate(async mode => {
+      const db = await new Promise<IDBDatabase>(resolve => { const req = indexedDB.open('personal-roadmap-v1', 1); req.onsuccess = () => resolve(req.result); });
+      await new Promise<void>(resolve => {
+        const tx = db.transaction('roadmap', 'readwrite'), store = tx.objectStore('roadmap'), req = store.get('current');
+        req.onsuccess = () => { const value = req.result; value.preferences.backlog.mode = mode; store.put(value, 'current'); };
+        tx.oncomplete = () => resolve();
+      });
+      db.close();
+    }, mode);
+    await page.reload(); await saved(page);
+    await expect(sharedA(page)).toBeVisible();
+    const toolbar = page.getByRole('region', { name: 'כלי בקלוג' });
+    for (const name of ['אנשי הצוות', 'לפי עבודות', 'לפי אנשים', 'רשימה אחת', 'פתיחת הכול', 'קיפול הכול', 'ביטול שינוי', 'החזרת שינוי']) {
+      await expect(toolbar.getByRole('button', { name, exact: true })).toHaveCount(0);
+    }
+    await expect(page.locator('.backlog-count')).toHaveCount(0);
+    await page.getByRole('searchbox', { name: 'חיפוש משימות', exact: true }).fill('ראשונה');
+    await expect(page.getByTestId('backlog-row-a')).toBeVisible();
+    expect((await stored(page)).document).toEqual(before.document);
+  });
+}
