@@ -120,7 +120,7 @@ export function validatePreferences(value: unknown): ViewPreferences {
     assert(Array.isArray(prefs['collapsedGroups']) && prefs['collapsedGroups'].length <= 10000);
     const keys = new Set<string>();
     for (const group of prefs['collapsedGroups']) {
-      assert(record(group) && text(group['teamId']) && ['selected', 'candidates'].includes(String(group['pane'])) && (group['workItemId'] === null || text(group['workItemId'])));
+      assert(record(group) && text(group['teamId']) && text(group['pane']) && ['selected', 'candidates'].includes(group['pane']) && (group['workItemId'] === null || text(group['workItemId'])));
       const key = JSON.stringify([group['teamId'], group['pane'], group['workItemId']]);
       assert(!keys.has(key), 'קבוצת תכנון כפולה'); keys.add(key);
     }

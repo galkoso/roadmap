@@ -67,7 +67,7 @@ test('roadmap creation separates headings from tasks and filters headings by tea
   page.once('dialog', prompt => prompt.accept());
   await page.getByRole('dialog', { name: 'עריכת כותרת', exact: true }).getByRole('button', { name: 'מחיקת כותרת', exact: true }).click();
   await expect(backlogHeading).toHaveCount(0);
-  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click();
+  await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+z');
   await expect(backlogHeading).toBeVisible();
   await expect(page.locator('.save-state')).toHaveText('נשמר');
 });

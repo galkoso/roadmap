@@ -7,27 +7,22 @@ async function create(page: Page, title: string) {
   await dialog.getByRole('button', { name: 'שמירת פריט', exact: true }).click(); await saved(page);
 }
 async function titles(page: Page) { return page.locator('.backlog-title span').evaluateAll(elements => elements.map(el => el.childNodes[0].textContent)); }
-test('drag ordering saves, supports Undo/Redo and keyboard ordering across backlog views', async ({ page }) => {
+test('drag ordering saves, supports Undo/Redo and keyboard ordering within backlog groups', async ({ page }) => {
   await page.goto('/backlog'); await saved(page);
   for (const title of ['ראשונה', 'שנייה', 'שלישית']) await create(page, title);
-  await page.getByRole('button', { name: 'רשימה אחת', exact: true }).click();
   await expect(page.locator('.backlog-drag-handle')).toHaveCount(3);
   const source = page.getByRole('button', { name: 'סידור משימה שלישית', exact: true });
   const target = page.locator('.backlog-row').filter({ hasText: 'ראשונה' });
   await source.dragTo(target, { targetPosition: { x: 50, y: 5 } }); await saved(page);
   await expect.poll(() => titles(page)).toEqual(['שלישית', 'ראשונה', 'שנייה']);
-  await page.getByRole('button', { name: 'ביטול שינוי', exact: true }).click(); await saved(page);
+  await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+z'); await saved(page);
   await expect.poll(() => titles(page)).toEqual(['ראשונה', 'שנייה', 'שלישית']);
-  await page.getByRole('button', { name: 'החזרת שינוי', exact: true }).click(); await saved(page);
+  await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+Shift+z'); await saved(page);
   await expect.poll(() => titles(page)).toEqual(['שלישית', 'ראשונה', 'שנייה']);
   await source.focus(); await source.press('ArrowDown'); await saved(page);
   await expect.poll(() => titles(page)).toEqual(['ראשונה', 'שלישית', 'שנייה']);
   await source.press('ArrowUp'); await saved(page);
   await expect.poll(() => titles(page)).toEqual(['שלישית', 'ראשונה', 'שנייה']);
-  for (const mode of ['לפי עבודות', 'לפי אנשים']) {
-    await page.getByRole('button', { name: mode, exact: true }).click();
-    await expect.poll(() => titles(page)).toEqual(['שלישית', 'ראשונה', 'שנייה']);
-  }
   await page.reload(); await saved(page);
   await expect.poll(() => titles(page)).toEqual(['שלישית', 'ראשונה', 'שנייה']);
   const first = page.getByRole('button', { name: 'סידור משימה שלישית', exact: true });

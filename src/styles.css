@@ -102,3 +102,5 @@
 .planning-unresolved{border:1px solid #685237;background:#2a241d;border-radius:8px;padding:14px 18px;margin-bottom:20px;font-size:12px;color:#e1c4a2}.planning-unresolved h2{font-size:15px;margin:0}.planning-unresolved>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-block:8px}.planning-unresolved>div span{flex:1}
 @media(max-width:900px){.planning-panes{grid-template-columns:1fr}.planning-capacity{grid-template-columns:1fr 1fr}.planning-budget-input{grid-column:1/-1;border-bottom:1px solid var(--grid)}.planning-metric:nth-child(2){border-inline-start:0}}
 @media(max-width:480px){.planning-metric,.planning-budget-input{padding:14px}.planning-metric strong{font-size:20px}.planning-work-toggle{gap:6px;padding-inline:10px}.planning-work-toggle small{max-width:48%}.planning-task{padding-inline:20px 10px}.planning-task-actions{width:100%}.page-navigation a{padding-inline:14px}.planning-page .app-heading{gap:10px;flex-wrap:wrap}}
+
+.planning-metric strong{display:flex;gap:5px;align-items:baseline;flex-wrap:wrap}
