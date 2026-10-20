@@ -104,3 +104,5 @@
 @media(max-width:480px){.planning-metric,.planning-budget-input{padding:14px}.planning-metric strong{font-size:20px}.planning-work-toggle{gap:6px;padding-inline:10px}.planning-work-toggle small{max-width:48%}.planning-task{padding-inline:20px 10px}.planning-task-actions{width:100%}.page-navigation a{padding-inline:14px}.planning-page .app-heading{gap:10px;flex-wrap:wrap}}
 
 .planning-metric strong{display:flex;gap:5px;align-items:baseline;flex-wrap:wrap}
+
+.planning-source{padding:12px 16px;margin:0;border-bottom:1px solid var(--grid);font-weight:400}.planning-source select{max-width:300px}

@@ -1,15 +1,16 @@
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal, ViewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { BacklogTaskDialogComponent } from './backlog-task-dialog.component';
 import { RoadmapStore } from '../core/store';
-import { isScheduled, PlanningPane, PlanningPreferences, statuses, Task } from '../core/model';
+import { isScheduled, PlanningCandidateSource, PlanningPane, PlanningPreferences, statuses, Task } from '../core/model';
 import { memberLabel, membersForTeam } from '../core/members';
 import {
   capacitySummary, effortTotal, emptyPlanningPreferences, parseCapacityDays, planningGroups, planningTasks, selectPlanningTask, setCapacity, taskEffort
 } from '../core/planning';
 
 @Component({
-  selector: 'app-planning', standalone: true, imports: [RouterLink, BacklogTaskDialogComponent],
+  selector: 'app-planning', standalone: true, imports: [RouterLink, FormsModule, BacklogTaskDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush, templateUrl: './planning-page.component.html'
 })
 export class PlanningPageComponent {
@@ -24,7 +25,8 @@ export class PlanningPageComponent {
     { key: 'selected', title: 'המשימות שנבחרו לתכנון' }, { key: 'candidates', title: 'משימות מהבקלוג לבחירה' }
   ];
   readonly selected = computed(() => planningTasks(this.store.document(), this.team().id, 'selected'));
-  readonly candidates = computed(() => planningTasks(this.store.document(), this.team().id, 'candidates'));
+  readonly candidateSource = computed(() => this.preferences().candidateSource ?? 'all');
+  readonly candidates = computed(() => planningTasks(this.store.document(), this.team().id, 'candidates', this.candidateSource()));
   readonly groups = computed(() => ({ selected: planningGroups(this.store.document(), this.selected()), candidates: planningGroups(this.store.document(), this.candidates()) }));
   readonly unresolved = computed(() => planningTasks(this.store.document(), null, 'selected'));
   readonly error = signal(''); readonly drafts = signal<Record<string, string>>({});
@@ -36,6 +38,8 @@ export class PlanningPageComponent {
   private setPreferences(patch: Partial<PlanningPreferences>): void {
     this.store.setPreferences({ planning: { ...this.preferences(), ...patch } });
   }
+  setCandidateSource(candidateSource: PlanningCandidateSource): void { this.setPreferences({ candidateSource }); }
+  taskTeamName(task: Task): string { return this.store.document().teams.find(team => team.id === task.teamId)?.name ?? 'ללא צוות'; }
   selectTeam(id: string): void { this.error.set(''); this.setPreferences({ activeTeamId: id }); }
   breakdownOpen(): boolean { return this.preferences().expandedTeamIds.includes(this.team().id); }
   toggleBreakdown(): void {
@@ -56,10 +60,16 @@ export class PlanningPageComponent {
     if (!this.store.loaded() || this.store.importing()) return;
     if (this.store.document().planning.selectedTaskIds.includes(task.id) === selected) return;
     try {
-      const next = selectPlanningTask(this.store.document(), task.id, selected), pane = selected ? 'selected' : 'candidates';
-      const collapsedGroups = this.preferences().collapsedGroups.filter(group => !(group.teamId === task.teamId && group.pane === pane && group.workItemId === task.workItemId));
+      const next = selectPlanningTask(this.store.document(), task.id, selected, task.teamId === null ? this.team().id : undefined), pane = selected ? 'selected' : 'candidates';
+      const collapsedGroups = this.preferences().collapsedGroups.filter(group => !(group.teamId === this.team().id && group.pane === pane && group.workItemId === task.workItemId));
       this.store.commit(next, selected ? 'המשימה נוספה לתכנון' : 'המשימה הוסרה מהתכנון', { planning: { ...this.preferences(), collapsedGroups } });
     } catch (error) { this.error.set((error as Error).message); }
+  }
+  resolvePlanningTeam(task: Task): void {
+    if (!this.store.loaded() || this.store.importing()) return;
+    const doc = structuredClone(this.store.document());
+    doc.planning.taskTeamLinks = [...(doc.planning.taskTeamLinks ?? []).filter(link => link.taskId !== task.id), { taskId: task.id, teamId: this.team().id }];
+    this.store.commit(doc, 'צוות התכנון עודכן');
   }
   private inputKey(memberId?: string): string { return JSON.stringify([this.team().id, memberId ?? null]); }
   capacityInput(memberId?: string): string {

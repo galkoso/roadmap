@@ -15,10 +15,14 @@ export interface TeamCapacity {
   teamId: string; availableWorkingDays: number | null;
   memberAvailability: { memberId: string; availableWorkingDays: number }[];
 }
-export interface PlanningState { selectedTaskIds: string[]; teamCapacities: TeamCapacity[] }
+export interface PlanningState {
+  selectedTaskIds: string[]; teamCapacities: TeamCapacity[];
+  taskTeamLinks?: { taskId: string; teamId: string | null }[];
+}
+export type PlanningCandidateSource = 'team' | 'unassigned' | 'all';
 export type PlanningPane = 'selected' | 'candidates';
 export interface PlanningPreferences {
-  activeTeamId: string | null;
+  activeTeamId: string | null; candidateSource?: PlanningCandidateSource;
   collapsedGroups: { teamId: string; pane: PlanningPane; workItemId: string | null }[];
   expandedTeamIds: string[];
 }

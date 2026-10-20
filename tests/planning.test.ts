@@ -156,3 +156,51 @@ describe('schema migration, backups and atomic persistence', () => {
     expect(await db.load()).toEqual(before);
   });
 });
+
+describe('unassigned backlog tasks in team planning', () => {
+  it('filters team, unassigned and combined candidates without including other teams', () => {
+    const doc = fixture(); task(doc, 'b').teamId = 'team-b';
+    expect(planningTasks(doc, 'team-a', 'candidates', 'team').map(t => t.id)).toEqual(['a', 'unknown', 'solo']);
+    expect(planningTasks(doc, 'team-a', 'candidates', 'unassigned').map(t => t.id)).toEqual(['no-team']);
+    expect(planningTasks(doc, 'team-a', 'candidates', 'all').map(t => t.id)).toEqual(['a', 'unknown', 'solo', 'no-team']);
+  });
+  it('links an unassigned task to a plan without changing its real team, scheduling or counting twice', () => {
+    const original = fixture(); task(original, 'no-team').estimatedWorkingDays = 4; const before = clone(original);
+    let doc = selectPlanningTask(original, 'no-team', true, 'team-a');
+    doc = selectPlanningTask(doc, 'no-team', true, 'team-b');
+    expect(doc.tasks).toEqual(before.tasks); expect(original).toEqual(before);
+    expect(doc.planning.taskTeamLinks).toEqual([{ taskId: 'no-team', teamId: 'team-a' }]);
+    expect(planningTasks(doc, 'team-a', 'selected').map(t => t.id)).toEqual(['no-team']);
+    expect(planningTasks(doc, null, 'selected')).toEqual([]); expect(capacitySummary(doc, 'team-a').known).toBe(4);
+    expect(planningTasks(doc, 'team-b', 'candidates', 'all').some(t => t.id === 'no-team')).toBe(false);
+    const scheduled = scheduleTask(doc, 'no-team', { startDate: '2027-02-04', workingDays: 4, teamId: null, workItemId: null });
+    expect(task(scheduled, 'no-team').teamId).toBeNull(); expect(capacitySummary(scheduled, 'team-a').known).toBe(4);
+    const removed = selectPlanningTask(scheduled, 'no-team', false);
+    expect(task(removed, 'no-team')).toEqual(task(scheduled, 'no-team')); expect(removed.planning.taskTeamLinks).toBeUndefined();
+    expect(planningTasks(removed, 'team-a', 'candidates', 'all').some(t => t.id === 'no-team')).toBe(false);
+    const unscheduled = selectPlanningTask(doc, 'no-team', false);
+    expect(planningTasks(unscheduled, 'team-b', 'candidates', 'unassigned').map(t => t.id)).toEqual(['no-team']);
+  });
+  it('persists links and candidate sources, supports old backups and rejects inconsistent new references', () => {
+    const doc = selectPlanningTask(fixture(), 'no-team', true, 'team-a');
+    const prefs = { ...initialPreferences(), planning: { ...emptyPlanningPreferences(), candidateSource: 'unassigned' as const } };
+    const backup = parseBackup(exportBackup(doc, prefs)); expect(backup.document).toEqual(doc); expect(backup.preferences).toEqual(prefs);
+    expect(reconcilePlanningPreferences(prefs.planning, doc).candidateSource).toBe('unassigned');
+    expect(parseBackup(exportBackup(fixture(), initialPreferences())).document.planning.taskTeamLinks).toBeUndefined();
+    for (const links of [
+      [{ taskId: 'no-team', teamId: 'missing' }], [{ taskId: 'missing', teamId: 'team-a' }],
+      [{ taskId: 'a', teamId: 'team-a' }], [{ taskId: 'no-team', teamId: 'team-a' }, { taskId: 'no-team', teamId: 'team-b' }]
+    ]) expect(() => validateDocument({ ...doc, planning: { ...doc.planning, taskTeamLinks: links } })).toThrow();
+    expect(() => validatePreferences({ ...prefs, planning: { ...prefs.planning, candidateSource: 'unknown' } })).toThrow();
+  });
+  it('keeps an independent planning link after task reassignment and exposes a deleted planning team as unresolved', () => {
+    const doc = selectPlanningTask(fixture(), 'no-team', true, 'team-c');
+    changeTaskTeam(doc, task(doc, 'no-team'), 'team-b');
+    expect(planningTasks(doc, 'team-c', 'selected').map(t => t.id)).toEqual(['no-team']);
+    doc.teams = doc.teams.filter(team => team.id !== 'team-c'); reconcilePlanning(doc);
+    expect(planningTasks(doc, null, 'selected').map(t => t.id)).toEqual(['no-team']);
+    expect(validateDocument(doc).planning.taskTeamLinks).toEqual([{ taskId: 'no-team', teamId: null }]);
+    doc.tasks = doc.tasks.filter(t => t.id !== 'no-team'); reconcilePlanning(doc);
+    expect(doc.planning.selectedTaskIds).toEqual([]); expect(doc.planning.taskTeamLinks).toEqual([]);
+  });
+});

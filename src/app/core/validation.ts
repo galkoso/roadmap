@@ -69,6 +69,15 @@ export function validateDocument(value: unknown): RoadmapDocument {
   const selected = planning['selectedTaskIds'], capacities = planning['teamCapacities'];
   assert(Array.isArray(selected) && selected.length <= 10000 && selected.every(text), 'בחירת משימות אינה תקינה');
   assert(new Set(selected).size === selected.length && selected.every(id => doc.tasks.some(task => task.id === id)), 'בחירת משימות כפולה או מפנה למשימה חסרה');
+  if (planning['taskTeamLinks'] !== undefined) {
+    const links = planning['taskTeamLinks']; assert(Array.isArray(links) && links.length <= 10000, 'קישור צוות לתכנון אינו תקין');
+    const linked = new Set<string>();
+    for (const link of links) {
+      assert(record(link) && text(link['taskId']) && selected.includes(link['taskId']) && !linked.has(link['taskId']), 'משימת תכנון מקושרת חסרה או כפולה');
+      assert(link['teamId'] === null || (text(link['teamId']) && doc.teams.some(team => team.id === link['teamId'])), 'צוות התכנון המקושר אינו קיים');
+      linked.add(link['taskId']);
+    }
+  }
   assert(Array.isArray(capacities) && capacities.length <= 10000, 'קיבולת צוותים אינה תקינה');
   const capacityTeams = new Set<string>();
   for (const capacity of capacities) {
@@ -114,6 +123,7 @@ export function validatePreferences(value: unknown): ViewPreferences {
   }
   if (value['planning'] !== undefined) {
     const prefs = value['planning']; assert(record(prefs));
+    assert(prefs['candidateSource'] === undefined || (text(prefs['candidateSource']) && ['team', 'unassigned', 'all'].includes(prefs['candidateSource'])), 'מקור משימות התכנון אינו תקין');
     assert(prefs['activeTeamId'] === null || text(prefs['activeTeamId']));
     assert(Array.isArray(prefs['expandedTeamIds']) && prefs['expandedTeamIds'].length <= 10000 && prefs['expandedTeamIds'].every(text));
     assert(new Set(prefs['expandedTeamIds']).size === prefs['expandedTeamIds'].length);

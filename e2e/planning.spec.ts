@@ -208,3 +208,44 @@ test('planning save failure preserves stored data, keeps one in-memory selection
   await expect.poll(async () => (await stored(page)).document.planning.selectedTaskIds).toEqual(['a']);
   await page.reload(); await saved(page); await expect(row(page, 'selected', 'a')).toHaveCount(1);
 });
+
+test('unassigned backlog can be selected for a team plan, filtered, reloaded, undone and scheduled without team assignment', async ({ page }) => {
+  const source = page.getByLabel('מקור המשימות לבחירה', { exact: true });
+  await expect(source).toHaveValue('all'); await expect(row(page, 'candidates', 'no-team')).toBeVisible();
+  await source.selectOption('team'); await expect(row(page, 'candidates', 'no-team')).toHaveCount(0); await expect(row(page, 'candidates', 'a')).toBeVisible();
+  await source.selectOption('unassigned'); await expect(row(page, 'candidates', 'a')).toHaveCount(0);
+  await row(page, 'candidates', 'no-team').getByRole('button', { name: '＋ לתכנון', exact: true }).click();
+  await expect(row(page, 'selected', 'no-team')).toContainText('ללא צוות'); await expect(row(page, 'candidates', 'no-team')).toHaveCount(0);
+  await expect(source).toHaveValue('unassigned'); await expect(page.getByTestId('planning-effort')).toContainText('1');
+  await expect.poll(async () => (await stored(page)).document.planning.taskTeamLinks).toEqual([{ taskId: 'no-team', teamId: 'team-a' }]);
+  await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+z');
+  await expect(row(page, 'candidates', 'no-team')).toBeVisible(); await expect(row(page, 'selected', 'no-team')).toHaveCount(0);
+  await page.keyboard.press('Control+Shift+z'); await expect(row(page, 'selected', 'no-team')).toBeVisible(); await saved(page);
+  await page.getByRole('link', { name: 'בקלוג', exact: true }).click();
+  await expect(page.getByTestId('backlog-row-no-team').getByLabel('צוות לפריט משימה ללא צוות').locator('option:checked')).toHaveText('ללא צוות');
+  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click();
+  await page.getByRole('button', { name: 'צוות ב׳', exact: true }).click(); await expect(row(page, 'selected', 'no-team')).toHaveCount(0); await expect(row(page, 'candidates', 'no-team')).toHaveCount(0);
+  await page.getByRole('button', { name: 'צוות א׳', exact: true }).click();
+  await expect.poll(async () => (await stored(page)).preferences.planning.activeTeamId).toBe('team-a');
+  await saved(page); await page.reload(); await saved(page);
+  await expect(source).toHaveValue('unassigned'); await expect(row(page, 'selected', 'no-team')).toBeVisible();
+  await row(page, 'selected', 'no-team').getByRole('button', { name: 'ל־Roadmap', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'שיבוץ בזמן', exact: true }); await expect(dialog.getByLabel('צוות', { exact: true }).locator('option:checked')).toHaveText('ללא צוות');
+  await dialog.getByLabel('תאריך התחלה').fill('2027-02-04'); await dialog.getByRole('button', { name: 'אישור שיבוץ', exact: true }).click(); await saved(page);
+  const state = await stored(page), scheduled = state.document.tasks.find((task: any) => task.id === 'no-team');
+  expect(scheduled).toMatchObject({ teamId: null, workItemId: null, planningState: 'scheduled' });
+  expect(state.document.planning.taskTeamLinks).toEqual([{ taskId: 'no-team', teamId: 'team-a' }]);
+  await expect(row(page, 'selected', 'no-team')).toContainText('שובצה ב־Roadmap');
+  await row(page, 'selected', 'no-team').getByRole('button', { name: 'הסרה מהתכנון משימה ללא צוות', exact: true }).click(); await saved(page);
+  await expect(row(page, 'candidates', 'no-team')).toHaveCount(0); expect((await stored(page)).document.tasks.find((task: any) => task.id === 'no-team')).toEqual(scheduled);
+});
+
+test('removing an unassigned selection restores the candidate and clears only the planning link', async ({ page }) => {
+  const source = page.getByLabel('מקור המשימות לבחירה', { exact: true }); await source.selectOption('unassigned');
+  await row(page, 'candidates', 'no-team').getByRole('button', { name: '＋ לתכנון', exact: true }).click();
+  await row(page, 'selected', 'no-team').getByRole('button', { name: 'הסרה מהתכנון משימה ללא צוות', exact: true }).click();
+  await expect(row(page, 'candidates', 'no-team')).toBeVisible();
+  await expect.poll(async () => (await stored(page)).document.planning.selectedTaskIds).toEqual([]);
+  const state = await stored(page); expect(state.document.planning.taskTeamLinks).toBeUndefined();
+  expect(state.document.tasks.find((task: any) => task.id === 'no-team')).toMatchObject({ teamId: null, planningState: 'backlog' });
+});

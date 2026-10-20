@@ -18,22 +18,23 @@
         }
       </div>
     </section>
-    @if (unresolved().length) { <section class="planning-unresolved" aria-label="משימות בתכנון ללא צוות"><h2>משימות בתכנון ללא צוות</h2><p>שיוך הצוות הוסר. יש לעדכן את הצוות כדי לכלול את המשימה בסיכומי התכנון.</p>@for (task of unresolved(); track task.id) { <div><span>{{ task.title }}</span><button (click)="edit(task)">עדכון צוות</button><button (click)="select(task, false)">הסרה מהתכנון</button></div> }</section> }
+    @if (unresolved().length) { <section class="planning-unresolved" aria-label="משימות בתכנון ללא צוות"><h2>משימות בתכנון ללא צוות</h2><p>למשימות אלו חסר צוות לתכנון. אפשר לקשר אותן לצוות הנבחר בתכנון בלבד, או לערוך את שיוך הצוות המקורי.</p>@for (task of unresolved(); track task.id) { <div><span>{{ task.title }}</span><button (click)="resolvePlanningTeam(task)">לתכנון של {{ team().name }}</button><button (click)="edit(task)">עדכון צוות</button><button (click)="select(task, false)">הסרה מהתכנון</button></div> }</section> }
     <div class="planning-panes">
       @for (pane of panes; track pane.key) { <section class="planning-pane" [attr.data-pane]="pane.key" [attr.aria-labelledby]="'pane-' + pane.key"><h2 [id]="'pane-' + pane.key">{{ pane.title }} <small>{{ pane.key === 'selected' ? selected().length : candidates().length }}</small></h2>
+        @if (pane.key === 'candidates') { <label class="planning-source">מקור המשימות<select aria-label="מקור המשימות לבחירה" [ngModel]="candidateSource()" (ngModelChange)="setCandidateSource($event)"><option value="all">משימות הצוות וללא צוות</option><option value="team">משימות הצוות</option><option value="unassigned">משימות ללא צוות</option></select></label> }
         @for (group of groups()[pane.key]; track group.workItemId) { @let sum = total(group.tasks); @let closed = collapsed(pane.key, group.workItemId);
           <section class="planning-work" [attr.data-work]="group.workItemId ?? '__standalone__'">
             <button class="planning-work-toggle" [attr.aria-expanded]="!closed" [attr.aria-controls]="contentId(pane.key, group.workItemId)" (click)="toggleGroup(pane.key, group.workItemId)"><span aria-hidden="true">{{ closed ? '‹' : '⌄' }}</span><bdi>{{ group.title }}</bdi><small>{{ group.tasks.length }} משימות · {{ sum.known }} ימי עבודה@if (sum.missing) { · {{ sum.missing }} חסר היקף }</small></button>
             <div [id]="contentId(pane.key, group.workItemId)" [hidden]="closed">
-              @if (!closed) { @for (task of group.tasks; track task.id) { <div class="planning-task" [attr.data-task]="task.id"><button class="planning-task-title" (click)="edit(task)"><i [style.background]="task.color" aria-hidden="true"></i><span>{{ task.title }}<small>{{ statusOptions[task.status] }}@if (task.assigneeId) { · {{ memberName(task.assigneeId) }} }</small></span></button><span class="planning-task-effort" [class.planning-warning]="effort(task) === null">{{ effort(task) === null ? 'חסר היקף' : effort(task) + ' ימי עבודה' }}</span>
+              @if (!closed) { @for (task of group.tasks; track task.id) { <div class="planning-task" [attr.data-task]="task.id"><button class="planning-task-title" (click)="edit(task)"><i [style.background]="task.color" aria-hidden="true"></i><span>{{ task.title }}<small>{{ taskTeamName(task) }} · {{ statusOptions[task.status] }}@if (task.assigneeId) { · {{ memberName(task.assigneeId) }} }</small></span></button><span class="planning-task-effort" [class.planning-warning]="effort(task) === null">{{ effort(task) === null ? 'חסר היקף' : effort(task) + ' ימי עבודה' }}</span>
                 <div class="planning-task-actions">@if (effort(task) === null) { <button (click)="edit(task)">השלמת היקף</button> }@if (pane.key === 'candidates') { <button (click)="select(task, true)" [disabled]="store.importing()">＋ לתכנון</button> } @else { @if (scheduled(task)) { <span class="planning-scheduled">שובצה ב־Roadmap</span><button (click)="showInRoadmap(task.id)">הצג בציר הזמן</button> } @else { <button (click)="edit(task, true)" [disabled]="store.importing()">ל־Roadmap</button> }<button [attr.aria-label]="'הסרה מהתכנון ' + task.title" (click)="select(task, false)" [disabled]="store.importing()">הסרה</button> }</div>
               </div> } }
             </div>
           </section>
-        } @empty { <p class="backlog-empty">@if (pane.key === 'selected') { עדיין לא נבחרו משימות לתכנון. הוסיפו משימות מהרשימה לבחירה. } @else if (selected().length) { אין משימות נוספות מהבקלוג לבחירה בצוות זה. } @else { אין משימות בקלוג המשויכות לצוות זה. } </p> }
+        } @empty { <p class="backlog-empty">@if (pane.key === 'selected') { עדיין לא נבחרו משימות לתכנון. הוסיפו משימות מהרשימה לבחירה. } @else if (selected().length) { אין משימות נוספות מהבקלוג לבחירה במקור שנבחר. } @else { אין משימות בקלוג לבחירה במקור שנבחר. } </p> }
       </section> }
     </div>
-    <p class="field-hint planning-note">הוספה לתכנון משאירה את המשימה בבקלוג המקורי. משימות ללא צוות אפשר לשייך דרך <a routerLink="/backlog">הבקלוג</a>.</p>
+    <p class="field-hint planning-note">אפשר לבחור גם משימות ללא צוות. הוספה לתכנון אינה משנה את שיוך הצוות המקורי ב־<a routerLink="/backlog" aria-label="פתיחת הבקלוג המקורי">בקלוג</a>; היא מקשרת את המשימה לתכנון של הצוות בלבד.</p>
     <div class="notice" role="status">{{ store.notice() }}</div>
   } @else { <div class="loading">{{ store.saveStatus() }}</div> }
   <app-backlog-task-dialog/>

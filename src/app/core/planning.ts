@@ -1,4 +1,4 @@
-import { clone, isScheduled, PlanningPane, PlanningPreferences, RoadmapDocument, Task } from './model';
+import { clone, isScheduled, PlanningCandidateSource, PlanningPane, PlanningPreferences, RoadmapDocument, Task } from './model';
 import { duration } from './dates';
 
 export const emptyPlanningPreferences = (): PlanningPreferences => ({ activeTeamId: null, collapsedGroups: [], expandedTeamIds: [] });
@@ -22,10 +22,17 @@ export function effortTotal(tasks: Task[]): { known: number; missing: number } {
     return { known: sum.known + (days ?? 0), missing: sum.missing + Number(days === null) };
   }, { known: 0, missing: 0 });
 }
-export function planningTasks(doc: RoadmapDocument, teamId: string | null, pane: PlanningPane): Task[] {
+export function planningTeamId(doc: RoadmapDocument, task: Task): string | null {
+  const link = doc.planning.taskTeamLinks?.find(link => link.taskId === task.id);
+  return link ? link.teamId : task.teamId;
+}
+export function planningTasks(doc: RoadmapDocument, teamId: string | null, pane: PlanningPane, source: PlanningCandidateSource = 'team'): Task[] {
   const selected = new Set(doc.planning.selectedTaskIds);
-  return doc.tasks.filter(task => task.teamId === teamId && (pane === 'selected' ? selected.has(task.id) : !isScheduled(task) && !selected.has(task.id)))
-    .sort((a, b) => a.order - b.order);
+  return doc.tasks.filter(task => {
+    if (pane === 'selected') return selected.has(task.id) && planningTeamId(doc, task) === teamId;
+    const eligible = source === 'unassigned' ? task.teamId === null : task.teamId === teamId || (source === 'all' && task.teamId === null);
+    return eligible && !isScheduled(task) && !selected.has(task.id);
+  }).sort((a, b) => a.order - b.order);
 }
 export function planningGroups(doc: RoadmapDocument, tasks: Task[]): { workItemId: string | null; title: string; tasks: Task[] }[] {
   const byWork = new Map<string | null, Task[]>();
@@ -41,14 +48,23 @@ export function capacitySummary(doc: RoadmapDocument, teamId: string) {
   return { ...effort, available, distributed, remaining: available === null ? null : available - effort.known,
     undistributed: available === null ? null : available - distributed };
 }
-export function selectPlanningTask(document: RoadmapDocument, id: string, selected: boolean): RoadmapDocument {
+export function selectPlanningTask(document: RoadmapDocument, id: string, selected: boolean, teamId?: string): RoadmapDocument {
   const doc = clone(document), task = doc.tasks.find(task => task.id === id);
   if (!task) throw new Error('המשימה אינה קיימת');
   const ids = new Set(doc.planning.selectedTaskIds);
   if (selected && !ids.has(id)) {
-    if (task.teamId === null || isScheduled(task)) throw new Error('יש לבחור משימת בקלוג המשויכת לצוות');
+    if (isScheduled(task)) throw new Error('יש לבחור משימת בקלוג');
+    if (teamId !== undefined && !doc.teams.some(team => team.id === teamId)) throw new Error('צוות התכנון אינו קיים');
+    if (task.teamId === null && teamId === undefined) throw new Error('יש לבחור צוות לתכנון המשימה');
     ids.add(id);
-  } else if (!selected) ids.delete(id);
+    if (teamId !== undefined) doc.planning.taskTeamLinks = [...(doc.planning.taskTeamLinks ?? []), { taskId: id, teamId }];
+  } else if (!selected) {
+    ids.delete(id);
+    if (doc.planning.taskTeamLinks) {
+      doc.planning.taskTeamLinks = doc.planning.taskTeamLinks.filter(link => link.taskId !== id);
+      if (!doc.planning.taskTeamLinks.length) delete doc.planning.taskTeamLinks;
+    }
+  }
   doc.planning.selectedTaskIds = [...ids]; return doc;
 }
 export function setCapacity(document: RoadmapDocument, teamId: string, days: number, memberId?: string): RoadmapDocument {
@@ -69,6 +85,10 @@ export function setCapacity(document: RoadmapDocument, teamId: string, days: num
 export function reconcilePlanning(doc: RoadmapDocument): void {
   const tasks = new Set(doc.tasks.map(task => task.id)), teams = new Set(doc.teams.map(team => team.id));
   doc.planning.selectedTaskIds = doc.planning.selectedTaskIds.filter(id => tasks.has(id));
+  if (doc.planning.taskTeamLinks) {
+    doc.planning.taskTeamLinks = doc.planning.taskTeamLinks.filter(link => tasks.has(link.taskId) && doc.planning.selectedTaskIds.includes(link.taskId))
+      .map(link => ({ ...link, teamId: link.teamId !== null && teams.has(link.teamId) ? link.teamId : null }));
+  }
   doc.planning.teamCapacities = doc.planning.teamCapacities.filter(capacity => teams.has(capacity.teamId));
   for (const capacity of doc.planning.teamCapacities) {
     capacity.memberAvailability = capacity.memberAvailability.filter(value => doc.members.some(member => member.id === value.memberId && member.teamId === capacity.teamId));
@@ -76,7 +96,7 @@ export function reconcilePlanning(doc: RoadmapDocument): void {
 }
 export function reconcilePlanningPreferences(prefs: PlanningPreferences, doc: RoadmapDocument): PlanningPreferences {
   const teams = new Set(doc.teams.map(team => team.id)), works = new Set(doc.workItems.map(work => work.id));
-  return { activeTeamId: prefs.activeTeamId !== null && teams.has(prefs.activeTeamId) ? prefs.activeTeamId : null,
+  return { ...prefs, activeTeamId: prefs.activeTeamId !== null && teams.has(prefs.activeTeamId) ? prefs.activeTeamId : null,
     expandedTeamIds: prefs.expandedTeamIds.filter(id => teams.has(id)),
     collapsedGroups: prefs.collapsedGroups.filter(group => teams.has(group.teamId) && (group.workItemId === null || works.has(group.workItemId))) };
 }
