@@ -2,11 +2,13 @@ import { ChangeDetectionStrategy, Component, computed, HostListener, inject, sig
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { BacklogTaskDialogComponent } from './backlog-task-dialog.component';
+import { nextWorkingDay } from '../core/dates';
 import { RoadmapStore } from '../core/store';
 import { isScheduled, PlanningCandidateSource, PlanningPane, PlanningPreferences, statuses, Task } from '../core/model';
 import { memberLabel, membersForTeam } from '../core/members';
 import {
-  capacitySummary, effortTotal, emptyPlanningPreferences, parseCapacityDays, planningGroups, planningTasks, selectPlanningTask, setCapacity, taskEffort
+  assignPlanningTask, capacitySummary, currentPlanningPeriod, effortTotal, emptyPlanningPreferences, memberCapacitySummary, monthlyPlan,
+  movePlanningTask, parseCapacityDays, planningGroups, planningMemberId, planningTasks, selectPlanningTask, setCapacity, taskEffort, validPlanningPeriod
 } from '../core/planning';
 
 @Component({
@@ -17,18 +19,23 @@ export class PlanningPageComponent {
   readonly store = inject(RoadmapStore); private readonly router = inject(Router);
   @ViewChild(BacklogTaskDialogComponent, { static: true }) editor!: BacklogTaskDialogComponent;
   readonly preferences = computed(() => this.store.preferences().planning ?? emptyPlanningPreferences());
+  readonly period = computed(() => this.preferences().activePeriod ?? currentPlanningPeriod());
+  readonly plan = computed(() => monthlyPlan(this.store.document(), this.period()));
+  readonly year = computed(() => Number(this.period().slice(0, 4)));
+  readonly months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר']
+    .map((name, index) => ({ name, value: String(index + 1).padStart(2, '0') }));
   readonly teams = computed(() => [...this.store.document().teams].sort((a, b) => a.order - b.order));
   readonly team = computed(() => this.teams().find(team => team.id === this.preferences().activeTeamId) ?? this.teams()[0]);
-  readonly summary = computed(() => capacitySummary(this.store.document(), this.team().id));
+  readonly summary = computed(() => capacitySummary(this.store.document(), this.team().id, this.period()));
   readonly members = computed(() => membersForTeam(this.store.document(), this.team().id));
   readonly panes: { key: PlanningPane; title: string }[] = [
     { key: 'selected', title: 'המשימות שנבחרו לתכנון' }, { key: 'candidates', title: 'משימות מהבקלוג לבחירה' }
   ];
-  readonly selected = computed(() => planningTasks(this.store.document(), this.team().id, 'selected'));
+  readonly selected = computed(() => planningTasks(this.store.document(), this.team().id, 'selected', 'team', this.period()));
   readonly candidateSource = computed(() => this.preferences().candidateSource ?? 'all');
-  readonly candidates = computed(() => planningTasks(this.store.document(), this.team().id, 'candidates', this.candidateSource()));
+  readonly candidates = computed(() => planningTasks(this.store.document(), this.team().id, 'candidates', this.candidateSource(), this.period()));
   readonly groups = computed(() => ({ selected: planningGroups(this.store.document(), this.selected()), candidates: planningGroups(this.store.document(), this.candidates()) }));
-  readonly unresolved = computed(() => planningTasks(this.store.document(), null, 'selected'));
+  readonly unresolved = computed(() => planningTasks(this.store.document(), null, 'selected', 'team', this.period()));
   readonly error = signal(''); readonly drafts = signal<Record<string, string>>({});
   readonly scheduled = isScheduled; readonly effort = taskEffort; readonly total = effortTotal; readonly statusOptions = statuses;
   memberName(id: string): string {
@@ -40,41 +47,60 @@ export class PlanningPageComponent {
   }
   setCandidateSource(candidateSource: PlanningCandidateSource): void { this.setPreferences({ candidateSource }); }
   taskTeamName(task: Task): string { return this.store.document().teams.find(team => team.id === task.teamId)?.name ?? 'ללא צוות'; }
-  selectTeam(id: string): void { this.error.set(''); this.setPreferences({ activeTeamId: id }); }
-  breakdownOpen(): boolean { return this.preferences().expandedTeamIds.includes(this.team().id); }
-  toggleBreakdown(): void {
-    const id = this.team().id, keys = this.preferences().expandedTeamIds;
-    this.setPreferences({ expandedTeamIds: keys.includes(id) ? keys.filter(key => key !== id) : [...keys, id] });
+  selectMonth(month: string): void { this.selectPeriod(`${this.year()}-${month}`); }
+  changeYear(event: Event): void {
+    const input = event.target as HTMLInputElement, year = Number(input.value);
+    const period = `${year}-${this.period().slice(5)}`;
+    if (!validPlanningPeriod(period)) { input.value = String(this.year()); this.error.set('יש להזין שנה שלמה בין 1900 ל־9999'); return; }
+    this.selectPeriod(period);
   }
+  private selectPeriod(activePeriod: string): void {
+    if (!validPlanningPeriod(activePeriod)) return;
+    this.error.set(''); this.setPreferences({ activePeriod });
+  }
+  personSummary(id: string) { return memberCapacitySummary(this.store.document(), this.team().id, id, this.period()); }
+  planningAssignee(task: Task): string | null { return planningMemberId(this.store.document(), task.id, this.period()); }
+  assign(task: Task, memberId: string | null): void {
+    if (this.store.importing()) return;
+    try { this.store.commit(assignPlanningTask(this.store.document(), task.id, memberId, this.period()), 'האחראי בתכנון עודכן'); }
+    catch (error) { this.error.set((error as Error).message); }
+  }
+  move(task: Task, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    try { this.store.commit(movePlanningTask(this.store.document(), task.id, this.period(), input.value), 'המשימה הועברה לחודש שנבחר'); }
+    catch (error) { input.value = this.period(); this.error.set((error as Error).message); }
+  }
+  selectTeam(id: string): void { this.error.set(''); this.setPreferences({ activeTeamId: id }); }
   collapsed(pane: PlanningPane, workItemId: string | null): boolean {
-    return this.preferences().collapsedGroups.some(group => group.teamId === this.team().id && group.pane === pane && group.workItemId === workItemId);
+    return this.preferences().collapsedGroups.some(group => group.teamId === this.team().id && group.pane === pane && group.workItemId === workItemId && (group.period ?? currentPlanningPeriod()) === this.period());
   }
   toggleGroup(pane: PlanningPane, workItemId: string | null): void {
     const teamId = this.team().id, keys = this.preferences().collapsedGroups;
     this.setPreferences({ collapsedGroups: this.collapsed(pane, workItemId)
-      ? keys.filter(group => !(group.teamId === teamId && group.pane === pane && group.workItemId === workItemId))
-      : [...keys, { teamId, pane, workItemId }] });
+      ? keys.filter(group => !(group.teamId === teamId && group.pane === pane && group.workItemId === workItemId && (group.period ?? currentPlanningPeriod()) === this.period()))
+      : [...keys, { teamId, pane, workItemId, period: this.period() }] });
   }
-  contentId(pane: PlanningPane, workItemId: string | null): string { return 'planning-' + encodeURIComponent(JSON.stringify([this.team().id, pane, workItemId])); }
+  contentId(pane: PlanningPane, workItemId: string | null): string { return 'planning-' + encodeURIComponent(JSON.stringify([this.period(), this.team().id, pane, workItemId])); }
   select(task: Task, selected: boolean): void {
     if (!this.store.loaded() || this.store.importing()) return;
-    if (this.store.document().planning.selectedTaskIds.includes(task.id) === selected) return;
+    if (this.plan().selectedTaskIds.includes(task.id) === selected) return;
     try {
-      const next = selectPlanningTask(this.store.document(), task.id, selected, task.teamId === null ? this.team().id : undefined), pane = selected ? 'selected' : 'candidates';
-      const collapsedGroups = this.preferences().collapsedGroups.filter(group => !(group.teamId === this.team().id && group.pane === pane && group.workItemId === task.workItemId));
+      const next = selectPlanningTask(this.store.document(), task.id, selected, task.teamId === null ? this.team().id : undefined, this.period()), pane = selected ? 'selected' : 'candidates';
+      const collapsedGroups = this.preferences().collapsedGroups.filter(group => !(group.teamId === this.team().id && group.pane === pane && group.workItemId === task.workItemId && (group.period ?? currentPlanningPeriod()) === this.period()));
       this.store.commit(next, selected ? 'המשימה נוספה לתכנון' : 'המשימה הוסרה מהתכנון', { planning: { ...this.preferences(), collapsedGroups } });
     } catch (error) { this.error.set((error as Error).message); }
   }
   resolvePlanningTeam(task: Task): void {
     if (!this.store.loaded() || this.store.importing()) return;
     const doc = structuredClone(this.store.document());
-    doc.planning.taskTeamLinks = [...(doc.planning.taskTeamLinks ?? []).filter(link => link.taskId !== task.id), { taskId: task.id, teamId: this.team().id }];
+    const plan = doc.planning.plans.find(plan => plan.period === this.period())!;
+    plan.taskTeamLinks = [...(plan.taskTeamLinks ?? []).filter(link => link.taskId !== task.id), { taskId: task.id, teamId: this.team().id }];
     this.store.commit(doc, 'צוות התכנון עודכן');
   }
-  private inputKey(memberId?: string): string { return JSON.stringify([this.team().id, memberId ?? null]); }
+  private inputKey(memberId?: string): string { return JSON.stringify([this.period(), this.team().id, memberId ?? null]); }
   capacityInput(memberId?: string): string {
     const draft = this.drafts()[this.inputKey(memberId)]; if (draft !== undefined) return draft;
-    const capacity = this.store.document().planning.teamCapacities.find(capacity => capacity.teamId === this.team().id);
+    const capacity = this.plan().teamCapacities.find(capacity => capacity.teamId === this.team().id);
     const value = memberId === undefined ? capacity?.availableWorkingDays : capacity?.memberAvailability.find(member => member.memberId === memberId)?.availableWorkingDays;
     return value?.toString() ?? '';
   }
@@ -82,19 +108,23 @@ export class PlanningPageComponent {
     const value = (event.target as HTMLInputElement).value;
     this.drafts.update(drafts => ({ ...drafts, [this.inputKey(memberId)]: value })); this.error.set('');
   }
-  saveCapacity(event: Event, memberId?: string): void {
+  saveCapacity(event: Event, memberId: string): void {
     event.preventDefault(); if (!this.store.loaded() || this.store.importing()) return;
     try {
       const days = parseCapacityDays(this.capacityInput(memberId));
-      this.store.commit(setCapacity(this.store.document(), this.team().id, days, memberId), 'ימי העבודה עודכנו');
+      this.store.commit(setCapacity(this.store.document(), this.team().id, days, memberId, this.period()), 'ימי העבודה עודכנו');
       this.drafts.update(drafts => { const copy = { ...drafts }; delete copy[this.inputKey(memberId)]; return copy; }); this.error.set('');
     } catch (error) { this.error.set((error as Error).message); }
   }
   edit(task: Task, schedule = false): void {
-    if (isScheduled(task)) this.showInRoadmap(task.id); else this.editor.open(task, schedule);
+    if (isScheduled(task)) this.showInRoadmap(task.id);
+    else {
+      this.editor.open(task, schedule);
+      if (schedule && this.period() !== currentPlanningPeriod()) this.editor.startDate = nextWorkingDay(this.period() + '-01');
+    }
   }
   showInRoadmap(id: string): void { this.store.focusTaskId.set(id); void this.router.navigate(['/roadmap'], { queryParams: { task: id } }); }
-  private dirty(): boolean { return Object.keys(this.drafts()).length > 0; }
+  dirty(): boolean { return Object.keys(this.drafts()).length > 0; }
   canDeactivate(): boolean {
     return this.editor.canDeactivate() && (!this.dirty() || confirm('יש ימי עבודה שלא נשמרו. לעבור לעמוד אחר ולבטל אותם?'));
   }

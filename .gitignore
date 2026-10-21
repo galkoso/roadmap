@@ -3,3 +3,7 @@ dist/
 .angular/
 playwright-report/
 test-results/
+.vercel/
+.env
+.env.*
+!.env.example

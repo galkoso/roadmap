@@ -3,7 +3,8 @@ import { Backup, clone, RoadmapDocument, SCHEMA_VERSION, ViewPreferences } from 
 import { initialPreferences, seedDocument } from './seed';
 import { assignTask, personKey } from './members';
 import { today } from './dates';
-import { RevisionConflict, RoadmapStorage } from './storage';
+import { RevisionConflict } from './storage';
+import { createRoadmapStorage } from './shared-storage';
 import { reconcilePlanning, reconcilePlanningPreferences } from './planning';
 import { validateDocument, validatePlanningPreferenceReferences, validatePreferences } from './validation';
 @Injectable({ providedIn: 'root' })
@@ -23,7 +24,10 @@ export class RoadmapStore {
   readonly rawRecovery = signal<unknown>(null);
   readonly undoStack = signal<RoadmapDocument[]>([]);
   readonly redoStack = signal<RoadmapDocument[]>([]);
-  private storage = new RoadmapStorage();
+  private storage = createRoadmapStorage();
+  readonly shared = !!this.storage.shared;
+  private refreshTimer?: ReturnType<typeof setInterval>;
+  private refreshing = false;
   private persistedRevision: number | null = null;
   private chain: Promise<void> = Promise.resolve();
   private failed = false;
@@ -40,10 +44,36 @@ export class RoadmapStore {
       }
       this.loaded.set(true);
       if (!saved || saved.document.schemaVersion !== SCHEMA_VERSION) this.queueSave();
+      if (this.shared && !this.refreshTimer) this.refreshTimer = setInterval(() => { void this.refreshShared(); }, 10000);
     } catch (error) {
-      this.failed = true; this.error.set('לא ניתן לטעון תכנון מקומי. לא נכתב או הוחלף מידע. ' + this.message(error));
+      this.failed = true; this.error.set('לא ניתן לטעון את התכנון. לא נכתב או הוחלף מידע. ' + this.message(error));
       this.saveStatus.set('תקלה בטעינה');
     }
+  }
+  ngOnDestroy(): void { clearInterval(this.refreshTimer); }
+  private editingShared(): boolean {
+    if (typeof document === 'undefined') return false;
+    return [...document.querySelectorAll('form.ng-dirty, .editor-panel, dialog[open], [role="dialog"], input:focus, textarea:focus, select:focus, [data-shared-draft]')]
+      .some(element => !element.closest('dialog:not([open])'));
+  }
+  async refreshShared(): Promise<void> {
+    if (!this.shared || !this.loaded() || this.failed || this.pending || this.importing() || this.preview() || this.refreshing) return;
+    // Keep open form drafts on their original revision: their next save will detect a conflict.
+    if (this.editingShared()) return;
+    const revision = this.persistedRevision;
+    this.refreshing = true;
+    try {
+      const saved = await this.storage.load();
+      // A local edit may have started while the GET was in flight.
+      if (!saved || this.failed || this.pending || this.importing() || this.preview() || revision !== this.persistedRevision) return;
+      if (this.editingShared()) return;
+      if (saved.document.revision === revision) { this.saveStatus.set('נשמר'); return; }
+      const next = validateDocument(saved.document);
+      this.document.set(next); this.persistedRevision = next.revision;
+      this.preferences.update(p => ({ ...p, planning: p.planning ? reconcilePlanningPreferences(p.planning, next) : undefined }));
+      this.undoStack.set([]); this.redoStack.set([]); this.saveStatus.set('נשמר'); this.notice.set('התכנון עודכן על ידי משתמש אחר');
+    } catch { if (!this.failed && !this.pending) this.saveStatus.set('אין חיבור לעדכונים משותפים; מנסה שוב...'); }
+    finally { this.refreshing = false; }
   }
   private message(error: unknown): string { return error instanceof Error ? error.message : 'השמירה המקומית נכשלה'; }
   commit(next: RoadmapDocument, message = 'התכנון עודכן', patch?: Partial<ViewPreferences>): void {
@@ -82,7 +112,14 @@ export class RoadmapStore {
     this.undoStack.update(s => [...s, clone(this.document())]); this.redoStack.set(stack.slice(0, -1));
     this.apply(clone(stack.at(-1)!), 'השינוי הוחזר');
   }
-  setPreferences(patch: Partial<ViewPreferences>): void { if (this.importing()) return; this.preferences.update(p => ({ ...p, ...patch })); if (this.loaded()) this.queueSave(); }
+  setPreferences(patch: Partial<ViewPreferences>): void {
+    if (this.importing()) return;
+    this.preferences.update(p => ({ ...p, ...patch }));
+    if (this.loaded()) {
+      if (this.shared) this.storage.savePreferences?.(this.preferences());
+      else this.queueSave();
+    }
+  }
   private queueSave(): void {
     if (this.failed) { this.saveStatus.set('שינויים בזיכרון בלבד'); return; }
     const snapshot = clone(this.document()), prefs = clone(this.preferences());
@@ -95,7 +132,7 @@ export class RoadmapStore {
         this.pending--; if (!this.pending) this.saveStatus.set('נשמר');
       } catch (error) {
         this.pending--; this.failed = true; this.conflict.set(error instanceof RevisionConflict);
-        this.error.set(error instanceof RevisionConflict ? error.message : 'השמירה המקומית נכשלה. השינויים נשארו בזיכרון. ' + this.message(error)); this.saveStatus.set('שינויים בזיכרון בלבד');
+        this.error.set(error instanceof RevisionConflict ? error.message : 'השמירה נכשלה. השינויים נשארו בזיכרון. ' + this.message(error)); this.saveStatus.set('שינויים בזיכרון בלבד');
       }
     });
   }

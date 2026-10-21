@@ -15,15 +15,18 @@ export interface TeamCapacity {
   teamId: string; availableWorkingDays: number | null;
   memberAvailability: { memberId: string; availableWorkingDays: number }[];
 }
-export interface PlanningState {
+export interface MonthlyPlan {
+  period: string;
   selectedTaskIds: string[]; teamCapacities: TeamCapacity[];
   taskTeamLinks?: { taskId: string; teamId: string | null }[];
+  taskMemberLinks?: { taskId: string; memberId: string }[];
 }
+export interface PlanningState { plans: MonthlyPlan[] }
 export type PlanningCandidateSource = 'team' | 'unassigned' | 'all';
 export type PlanningPane = 'selected' | 'candidates';
 export interface PlanningPreferences {
-  activeTeamId: string | null; candidateSource?: PlanningCandidateSource;
-  collapsedGroups: { teamId: string; pane: PlanningPane; workItemId: string | null }[];
+  activeTeamId: string | null; activePeriod?: string; candidateSource?: PlanningCandidateSource;
+  collapsedGroups: { teamId: string; pane: PlanningPane; workItemId: string | null; period?: string }[];
   expandedTeamIds: string[];
 }
 export interface RoadmapDocument {
@@ -37,7 +40,7 @@ export interface ViewPreferences {
   planning?: PlanningPreferences;
 }
 export interface Backup { schemaVersion: number; exportedAt: string; document: RoadmapDocument; preferences: ViewPreferences }
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 export const statuses: Record<TaskStatus, string> = { planned: 'מתוכננת', in_progress: 'בביצוע', completed: 'הושלמה' };
 export const palette = ['#3975d5', '#8c62c7', '#239b87', '#de9950', '#d66883', '#64748b'];
 export const uid = (): string => crypto.randomUUID();

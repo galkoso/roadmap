@@ -1,6 +1,6 @@
 import { Backup, isScheduled, RoadmapDocument, SCHEMA_VERSION, ViewPreferences } from './model';
 import { addWorkingDays, epoch, validateRange } from './dates';
-import { validCapacityDays } from './planning';
+import { currentPlanningPeriod, validCapacityDays, validPlanningPeriod } from './planning';
 import { topological } from './scheduler';
 function assert(test: unknown, message = 'מבנה קובץ הגיבוי אינו תקין'): asserts test { if (!test) throw new Error(message); }
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -8,7 +8,7 @@ const text = (value: unknown): value is string => typeof value === 'string';
 const order = (value: unknown): boolean => Number.isSafeInteger(value) && Number(value) >= 0;
 export function validateDocument(value: unknown): RoadmapDocument {
   assert(record(value));
-  assert([1, 2, 3, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1–4');
+  assert([1, 2, 3, 4, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1–5');
   if (value['schemaVersion'] === 1) {
     assert(Array.isArray(value['tasks']));
     for (const task of value['tasks']) assert(record(task) && text(task['teamId']) && text(task['workItemId']) && text(task['startDate']) && text(task['endDate']) && task['planningState'] === undefined, 'נתונים ישנים אינם תקינים; לא שונו ולא נמחקו');
@@ -26,8 +26,17 @@ export function validateDocument(value: unknown): RoadmapDocument {
   }
   if (value['schemaVersion'] === 3) {
     const migrated = structuredClone(value);
-    migrated['schemaVersion'] = SCHEMA_VERSION;
+    migrated['schemaVersion'] = 4;
     migrated['planning'] = { selectedTaskIds: [], teamCapacities: [] };
+    return validateDocument(migrated);
+  }
+  if (value['schemaVersion'] === 4) {
+    const migrated = structuredClone(value), legacy = value['planning'];
+    assert(record(legacy) && Array.isArray(legacy['selectedTaskIds']) && Array.isArray(legacy['teamCapacities']), 'מצב התכנון הקודם אינו תקין');
+    migrated['schemaVersion'] = SCHEMA_VERSION;
+    migrated['planning'] = { plans: [{ ...legacy, period: currentPlanningPeriod() }] };
+    // Empty plans carry no historical data and need not create a monthly partition.
+    if (!legacy['selectedTaskIds'].length && !legacy['teamCapacities'].length && legacy['taskTeamLinks'] === undefined) migrated['planning'] = { plans: [] };
     return validateDocument(migrated);
   }
   assert(order(value['revision']));
@@ -65,31 +74,49 @@ export function validateDocument(value: unknown): RoadmapDocument {
     if (isScheduled(t)) { assert(text(t.startDate) && text(t.endDate)); validateRange(t.startDate, t.endDate); }
     else assert(t.startDate === undefined && t.endDate === undefined, 'פריט בקלוג אינו יכול להכיל תאריכי דמה');
   }
-  const planning = value['planning']; assert(record(planning), 'מצב התכנון אינו תקין');
-  const selected = planning['selectedTaskIds'], capacities = planning['teamCapacities'];
-  assert(Array.isArray(selected) && selected.length <= 10000 && selected.every(text), 'בחירת משימות אינה תקינה');
-  assert(new Set(selected).size === selected.length && selected.every(id => doc.tasks.some(task => task.id === id)), 'בחירת משימות כפולה או מפנה למשימה חסרה');
-  if (planning['taskTeamLinks'] !== undefined) {
-    const links = planning['taskTeamLinks']; assert(Array.isArray(links) && links.length <= 10000, 'קישור צוות לתכנון אינו תקין');
-    const linked = new Set<string>();
-    for (const link of links) {
-      assert(record(link) && text(link['taskId']) && selected.includes(link['taskId']) && !linked.has(link['taskId']), 'משימת תכנון מקושרת חסרה או כפולה');
-      assert(link['teamId'] === null || (text(link['teamId']) && doc.teams.some(team => team.id === link['teamId'])), 'צוות התכנון המקושר אינו קיים');
-      linked.add(link['taskId']);
+  const planningState = value['planning']; assert(record(planningState) && Array.isArray(planningState['plans']) && planningState['plans'].length <= 10000, 'מצב התכנון החודשי אינו תקין');
+  const periods = new Set<string>(), allSelected = new Set<string>();
+  for (const planning of planningState['plans']) {
+    assert(record(planning) && validPlanningPeriod(planning['period']) && !periods.has(planning['period']), 'חודש התכנון אינו תקין או מופיע פעמיים');
+    periods.add(planning['period']);
+    const selected = planning['selectedTaskIds'], capacities = planning['teamCapacities'];
+    assert(Array.isArray(selected) && selected.length <= 10000 && selected.every(text), 'בחירת משימות אינה תקינה');
+    assert(new Set(selected).size === selected.length && selected.every(id => doc.tasks.some(task => task.id === id)), 'בחירת משימות כפולה או מפנה למשימה חסרה');
+    if (planning['taskTeamLinks'] !== undefined) {
+      const links = planning['taskTeamLinks']; assert(Array.isArray(links) && links.length <= 10000, 'קישור צוות לתכנון אינו תקין');
+      const linked = new Set<string>();
+      for (const link of links) {
+        assert(record(link) && text(link['taskId']) && selected.includes(link['taskId']) && !linked.has(link['taskId']), 'משימת תכנון מקושרת חסרה או כפולה');
+        assert(link['teamId'] === null || (text(link['teamId']) && doc.teams.some(team => team.id === link['teamId'])), 'צוות התכנון המקושר אינו קיים');
+        linked.add(link['taskId']);
+      }
     }
-  }
-  assert(Array.isArray(capacities) && capacities.length <= 10000, 'קיבולת צוותים אינה תקינה');
-  const capacityTeams = new Set<string>();
-  for (const capacity of capacities) {
-    assert(record(capacity) && text(capacity['teamId']) && doc.teams.some(team => team.id === capacity['teamId']) && !capacityTeams.has(capacity['teamId']), 'צוות קיבולת חסר או כפול');
-    capacityTeams.add(capacity['teamId']);
-    assert(capacity['availableWorkingDays'] === null || validCapacityDays(capacity['availableWorkingDays']), 'ימי עבודה זמינים אינם תקינים');
-    const availability = capacity['memberAvailability']; assert(Array.isArray(availability) && availability.length <= 10000);
-    const members = new Set<string>();
-    for (const entry of availability) {
-      assert(record(entry) && text(entry['memberId']) && !members.has(entry['memberId']) &&
-        doc.members.some(member => member.id === entry['memberId'] && member.teamId === capacity['teamId']), 'פירוט חיילים חסר, כפול או שייך לצוות אחר');
-      members.add(entry['memberId']); assert(validCapacityDays(entry['availableWorkingDays']), 'ימי עבודה לחייל אינם תקינים');
+    assert(Array.isArray(capacities) && capacities.length <= 10000, 'קיבולת צוותים אינה תקינה');
+    const capacityTeams = new Set<string>();
+    for (const capacity of capacities) {
+      assert(record(capacity) && text(capacity['teamId']) && doc.teams.some(team => team.id === capacity['teamId']) && !capacityTeams.has(capacity['teamId']), 'צוות קיבולת חסר או כפול');
+      capacityTeams.add(capacity['teamId']);
+      assert(capacity['availableWorkingDays'] === null || validCapacityDays(capacity['availableWorkingDays']), 'ימי עבודה זמינים אינם תקינים');
+      const availability = capacity['memberAvailability']; assert(Array.isArray(availability) && availability.length <= 10000);
+      const members = new Set<string>();
+      for (const entry of availability) {
+        assert(record(entry) && text(entry['memberId']) && !members.has(entry['memberId']) &&
+          doc.members.some(member => member.id === entry['memberId'] && member.teamId === capacity['teamId']), 'פירוט חיילים חסר, כפול או שייך לצוות אחר');
+        members.add(entry['memberId']); assert(validCapacityDays(entry['availableWorkingDays']), 'ימי עבודה לחייל אינם תקינים');
+      }
+    }
+    for (const id of selected) { assert(!allSelected.has(id), 'משימה נבחרה ליותר מחודש אחד'); allSelected.add(id); }
+    if (planning['taskMemberLinks'] !== undefined) {
+      const links = planning['taskMemberLinks']; assert(Array.isArray(links) && links.length <= 10000, 'שיוך לאדם בתכנון אינו תקין');
+      const assigned = new Set<string>();
+      for (const link of links) {
+        assert(record(link) && text(link['taskId']) && text(link['memberId']) && selected.includes(link['taskId']) && !assigned.has(link['taskId']), 'שיוך משימה לאדם חסר או כפול');
+        const task = doc.tasks.find(task => task.id === link['taskId'])!;
+        const teamLink = (planning['taskTeamLinks'] as { taskId: string; teamId: string | null }[] | undefined)?.find(team => team.taskId === task.id);
+        const teamId = teamLink ? teamLink.teamId : task.teamId;
+        assert(teamId !== null && doc.members.some(member => member.id === link['memberId'] && member.teamId === teamId), 'האדם אינו שייך לצוות התכנון');
+        assigned.add(link['taskId']);
+      }
     }
   }
   topological(doc);
@@ -123,6 +150,7 @@ export function validatePreferences(value: unknown): ViewPreferences {
   }
   if (value['planning'] !== undefined) {
     const prefs = value['planning']; assert(record(prefs));
+    assert(prefs['activePeriod'] === undefined || validPlanningPeriod(prefs['activePeriod']), 'חודש התכנון הפעיל אינו תקין');
     assert(prefs['candidateSource'] === undefined || (text(prefs['candidateSource']) && ['team', 'unassigned', 'all'].includes(prefs['candidateSource'])), 'מקור משימות התכנון אינו תקין');
     assert(prefs['activeTeamId'] === null || text(prefs['activeTeamId']));
     assert(Array.isArray(prefs['expandedTeamIds']) && prefs['expandedTeamIds'].length <= 10000 && prefs['expandedTeamIds'].every(text));
@@ -131,17 +159,20 @@ export function validatePreferences(value: unknown): ViewPreferences {
     const keys = new Set<string>();
     for (const group of prefs['collapsedGroups']) {
       assert(record(group) && text(group['teamId']) && text(group['pane']) && ['selected', 'candidates'].includes(group['pane']) && (group['workItemId'] === null || text(group['workItemId'])));
-      const key = JSON.stringify([group['teamId'], group['pane'], group['workItemId']]);
+      assert(group['period'] === undefined || validPlanningPeriod(group['period']), 'חודש בקבוצת התכנון אינו תקין');
+      const key = JSON.stringify([group['teamId'], group['pane'], group['workItemId'], group['period']]);
       assert(!keys.has(key), 'קבוצת תכנון כפולה'); keys.add(key);
     }
   }
   assert(Array.isArray(value['collapsed']) && value['collapsed'].every(text));
-  return structuredClone(value) as unknown as ViewPreferences;
+  const preferences = structuredClone(value) as unknown as ViewPreferences;
+  if (preferences.planning) preferences.planning.collapsedGroups = preferences.planning.collapsedGroups.map(group => ({ ...group, period: group.period ?? currentPlanningPeriod() }));
+  return preferences;
 }
 export function parseBackup(raw: string): Backup {
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new Error('הקובץ אינו JSON תקין'); }
-  assert(record(value)); assert([1, 2, 3, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת');
+  assert(record(value)); assert([1, 2, 3, 4, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת');
   assert(record(value['document']) && value['document']['schemaVersion'] === value['schemaVersion'], 'גרסת המסמך אינה תואמת לגרסת הגיבוי');
   assert(text(value['exportedAt']) && Number.isFinite(Date.parse(value['exportedAt'])));
   const document = validateDocument(value['document']), preferences = validatePreferences(value['preferences']);

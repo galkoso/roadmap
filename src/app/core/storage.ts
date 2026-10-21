@@ -1,6 +1,12 @@
 import { RoadmapDocument, ViewPreferences } from './model';
-export class RevisionConflict extends Error { constructor() { super('התכנון השתנה בלשונית אחרת. השינויים בזיכרון נשמרו; ייצאו גיבוי או טענו את הגרסה החדשה'); } }
-interface Stored { document: RoadmapDocument; preferences: ViewPreferences }
+export class RevisionConflict extends Error { constructor() { super('התכנון השתנה אצל משתמש אחר או בלשונית אחרת. השינויים בזיכרון נשמרו; ייצאו גיבוי או טענו את הגרסה החדשה'); } }
+export interface Stored { document: RoadmapDocument; preferences: ViewPreferences }
+export interface StorageAdapter {
+  readonly shared?: boolean;
+  load(): Promise<Stored | undefined>;
+  save(document: RoadmapDocument, preferences: ViewPreferences, expectedRevision: number | null): Promise<number>;
+  savePreferences?(preferences: ViewPreferences): void;
+}
 export class RoadmapStorage {
   private database?: Promise<IDBDatabase>;
   constructor(private readonly name = 'personal-roadmap-v1') {}

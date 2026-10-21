@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "angular",
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": "dist/roadmap/browser",
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/roadmap", "destination": "/index.html" },
+    { "source": "/backlog", "destination": "/index.html" },
+    { "source": "/planning", "destination": "/index.html" }
+  ]
+}

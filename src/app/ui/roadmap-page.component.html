@@ -1,5 +1,5 @@
 <section class="roadmap-page" dir="rtl">
-  <header class="app-heading"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><h1>מפת הדרכים של המדור</h1><p>תכנון אישי <span>·</span> ראשון–חמישי</p></div><span class="local-badge">◉ מרחב מקומי</span></header>
+  <header class="app-heading"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><h1>מפת הדרכים של המדור</h1><p>תכנון צוותי <span>·</span> ראשון–חמישי</p></div><span class="local-badge">◉ {{ store.shared ? 'מרחב משותף' : 'מרחב מקומי' }}</span></header>
   <section class="toolbar" aria-label="כלי תכנון">
     <button class="primary add-work" (click)="createWorkDialog.open()" [disabled]="!store.loaded()"><span>＋</span> כותרת חדשה</button><button (click)="addTask('__standalone__')" [disabled]="!store.loaded()">＋ משימה חדשה</button>
     <div class="segmented" aria-label="רמת תצוגה"><button [class.active]="store.preferences().mode === 'weeks'" (click)="setMode('weeks')">שבועות</button><button [class.active]="store.preferences().mode === 'months'" (click)="setMode('months')">חודשים</button><button [class.active]="store.preferences().mode === 'quarters'" (click)="setMode('quarters')">רבעונים</button></div>
@@ -25,13 +25,13 @@
   }
   @if (panel() === 'backup') {
     <section class="editor-panel backup-panel" aria-label="גיבוי ושחזור"><div class="panel-heading"><div><span class="eyebrow">הנתונים שלכם</span><h2>גיבוי ושחזור</h2></div><button class="icon-button" aria-label="סגירת הגיבוי" (click)="panel.set(null)">×</button></div>
-      <p>התכנון נשמר מקומית בדפדפן ובכתובת היישום הזו. מחיקת נתוני הדפדפן או שינוי כתובת עלולים להפריד אתכם מהתכנון; הם אינם גיבוי. שמרו קובץ גיבוי במקום בטוח.</p>
-      <div class="form-actions"><button class="primary" (click)="download()">↓ ייצוא גיבוי JSON</button><label class="file-button">↑ בחירת קובץ לשחזור<input type="file" accept=".json,application/json" (change)="readImport($event)" aria-label="בחירת קובץ גיבוי"></label><button (click)="requestPersistence()">בקשת אחסון מתמשך</button></div>
-      <p class="field-hint">{{ persistenceMessage() || 'אחסון מתמשך תלוי באישור הדפדפן ואינו חסין ממחיקה.' }}</p>
+      <p>{{ store.shared ? 'התכנון נשמר בשרת ומשותף לכל מי שפותח את הקישור. כל משתמש יכול לערוך אותו. העדפות התצוגה נשארות אישיות. מומלץ לייצא גיבויים באופן קבוע.' : 'התכנון נשמר מקומית בדפדפן ובכתובת היישום הזו. שמרו קובץ גיבוי במקום בטוח.' }}</p>
+      <div class="form-actions"><button class="primary" (click)="download()">↓ ייצוא גיבוי JSON</button><label class="file-button">↑ בחירת קובץ לשחזור<input type="file" accept=".json,application/json" (change)="readImport($event)" aria-label="בחירת קובץ גיבוי"></label>@if (!store.shared) { <button (click)="requestPersistence()">בקשת אחסון מתמשך</button> }</div>
+      @if (!store.shared) { <p class="field-hint">{{ persistenceMessage() || 'אחסון מתמשך תלוי באישור הדפדפן ואינו חסין ממחיקה.' }}</p> }
       @if (backupError()) { <p class="field-error" role="alert">{{ backupError() }}</p> }
-      @if (importCandidate(); as backup) { <div class="import-confirm"><h3>הגיבוי תקין ומוכן לייבוא</h3><p>{{ backup.document.teams.length }} צוותים · {{ backup.document.workItems.length }} עבודות · {{ backup.document.tasks.length }} משימות</p><p>הייבוא יחליף את התכנון הנוכחי. ניתן לייצא אותו לפני ההחלפה.</p><div class="form-actions"><button (click)="download()">ייצוא התכנון הנוכחי</button><button class="primary" [disabled]="store.importing()" (click)="confirmImport()">אישור והחלפת התכנון</button><button (click)="importCandidate.set(null)">ביטול</button></div></div> }
+      @if (importCandidate(); as backup) { <div class="import-confirm"><h3>הגיבוי תקין ומוכן לייבוא</h3><p>{{ backup.document.teams.length }} צוותים · {{ backup.document.workItems.length }} עבודות · {{ backup.document.tasks.length }} משימות</p><p>הייבוא יחליף את התכנון הנוכחי{{ store.shared ? ' עבור כל המשתמשים' : '' }}. ניתן לייצא אותו לפני ההחלפה.</p><div class="form-actions"><button (click)="download()">ייצוא התכנון הנוכחי</button><button class="primary" [disabled]="store.importing()" (click)="confirmImport()">אישור והחלפת התכנון</button><button (click)="importCandidate.set(null)">ביטול</button></div></div> }
     </section>
   }
   <app-create-work-dialog #createWorkDialog (created)="workCreated($event)"/>
-  <footer class="app-footer"><span>תכנון ברור. מקום לכל צוות.</span><span>נתונים מקומיים · ללא שירות מרוחק</span></footer>
+  <footer class="app-footer"><span>תכנון ברור. מקום לכל צוות.</span><span>{{ store.shared ? 'נתונים משותפים · עדכון אוטומטי' : 'נתונים מקומיים · ללא שירות מרוחק' }}</span></footer>
 </section>

@@ -8,7 +8,7 @@ export function seedDocument(): RoadmapDocument {
   const implementation = addWorkingDays(sunday, 3), implementationEnd = addWorkingDays(implementation, 4);
   const testing = addWorkingDays(implementationEnd, 1);
   return {
-    schemaVersion: SCHEMA_VERSION, revision: 0, members: [], planning: { selectedTaskIds: [], teamCapacities: [] },
+    schemaVersion: SCHEMA_VERSION, revision: 0, members: [], planning: { plans: [] },
     teams: [{ id: 'team-a', name: 'צוות א׳', order: 0 }, { id: 'team-b', name: 'צוות ב׳', order: 1 }, { id: 'team-c', name: 'צוות ג׳', order: 2 }],
     workItems: [{ id: 'services', title: 'שדרוג תשתית השירותים', order: 0 }, { id: 'monitoring', title: 'מערכת ניטור חדשה', order: 1 }],
     tasks: [
