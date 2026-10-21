@@ -280,5 +280,6 @@ test('heading creation and task creation validate separately, preserve inclusive
   await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+z'); await saved(page); expect((await planning(page)).document.workItems).toEqual(before.document.workItems);
   await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+Shift+z'); await saved(page);
   await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+Shift+z'); await saved(page);
+  await expect.poll(async () => (await planning(page)).document.tasks).toEqual(after.document.tasks);
   await page.reload(); await saved(page); expect((await planning(page)).document.tasks).toEqual(after.document.tasks);
 });
