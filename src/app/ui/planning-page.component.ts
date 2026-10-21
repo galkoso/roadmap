@@ -37,6 +37,7 @@ export class PlanningPageComponent {
   readonly groups = computed(() => ({ selected: planningGroups(this.store.document(), this.selected()), candidates: planningGroups(this.store.document(), this.candidates()) }));
   readonly unresolved = computed(() => planningTasks(this.store.document(), null, 'selected', 'team', this.period()));
   readonly error = signal(''); readonly drafts = signal<Record<string, string>>({});
+  readonly hasUnsavedCapacity = computed(() => Object.keys(this.drafts()).length > 0);
   readonly scheduled = isScheduled; readonly effort = taskEffort; readonly total = effortTotal; readonly statusOptions = statuses;
   memberName(id: string): string {
     const member = this.store.document().members.find(member => member.id === id);
@@ -97,14 +98,14 @@ export class PlanningPageComponent {
     plan.taskTeamLinks = [...(plan.taskTeamLinks ?? []).filter(link => link.taskId !== task.id), { taskId: task.id, teamId: this.team().id }];
     this.store.commit(doc, 'צוות התכנון עודכן');
   }
-  private inputKey(memberId?: string): string { return JSON.stringify([this.period(), this.team().id, memberId ?? null]); }
-  capacityInput(memberId?: string): string {
+  private inputKey(memberId: string): string { return JSON.stringify([this.period(), this.team().id, memberId]); }
+  capacityInput(memberId: string): string {
     const draft = this.drafts()[this.inputKey(memberId)]; if (draft !== undefined) return draft;
     const capacity = this.plan().teamCapacities.find(capacity => capacity.teamId === this.team().id);
-    const value = memberId === undefined ? capacity?.availableWorkingDays : capacity?.memberAvailability.find(member => member.memberId === memberId)?.availableWorkingDays;
+    const value = capacity?.memberAvailability.find(member => member.memberId === memberId)?.availableWorkingDays;
     return value?.toString() ?? '';
   }
-  draftCapacity(event: Event, memberId?: string): void {
+  draftCapacity(event: Event, memberId: string): void {
     const value = (event.target as HTMLInputElement).value;
     this.drafts.update(drafts => ({ ...drafts, [this.inputKey(memberId)]: value })); this.error.set('');
   }
@@ -119,12 +120,12 @@ export class PlanningPageComponent {
   edit(task: Task, schedule = false): void {
     if (isScheduled(task)) this.showInRoadmap(task.id);
     else {
-      this.editor.open(task, schedule);
-      if (schedule && this.period() !== currentPlanningPeriod()) this.editor.startDate = nextWorkingDay(this.period() + '-01');
+      const initialStart = schedule && this.period() !== currentPlanningPeriod() ? nextWorkingDay(this.period() + '-01') : undefined;
+      this.editor.open(task, schedule, undefined, undefined, initialStart);
     }
   }
   showInRoadmap(id: string): void { this.store.focusTaskId.set(id); void this.router.navigate(['/roadmap'], { queryParams: { task: id } }); }
-  dirty(): boolean { return Object.keys(this.drafts()).length > 0; }
+  dirty(): boolean { return this.hasUnsavedCapacity(); }
   canDeactivate(): boolean {
     return this.editor.canDeactivate() && (!this.dirty() || confirm('יש ימי עבודה שלא נשמרו. לעבור לעמוד אחר ולבטל אותם?'));
   }

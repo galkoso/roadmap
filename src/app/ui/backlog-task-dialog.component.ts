@@ -37,12 +37,12 @@ export class BacklogTaskDialogComponent {
   workName(id: string | null): string { return this.store.document().workItems.find(w => w.id === id)?.title ?? 'פריט עצמאי'; }
   teamName(id: string | null): string { return this.store.document().teams.find(t => t.id === id)?.name ?? 'ללא צוות'; }
   predecessor(id: string): Task | undefined { return this.store.document().tasks.find(t => t.id === id); }
-  open(item?: BacklogTask, schedule = false, workId?: string, teamId?: string | null): void {
+  open(item?: BacklogTask, schedule = false, workId?: string, teamId?: string | null, initialStart?: string): void {
     this.assignmentMessage = ''; this.isNew = !item; this.mode.set(schedule ? 'schedule' : 'edit'); this.error.set('');
     this.draft.set(item ? clone(item) : { assigneeId: null, id: uid(), planningState: 'backlog', estimatedWorkingDays: 5, teamId: null, workItemId: null, title: '', color: palette[0], status: 'planned', notes: '', order: Math.max(-1, ...this.store.document().tasks.map(t => t.order)) + 1 });
     if (workId && !item) { const heading = this.store.document().workItems.find(w => w.id === workId); this.draft.update(t => t ? { ...t, workItemId: workId, teamId: teamId !== undefined ? teamId : heading?.teamId ?? null } : t); }
     this.incoming = clone(this.store.document().dependencies.filter(d => d.successorId === item?.id));
-    this.startDate = nextWorkingDay(today()); this.workingDays = item?.estimatedWorkingDays ?? 5;
+    this.startDate = initialStart ?? nextWorkingDay(today()); this.workingDays = item?.estimatedWorkingDays ?? 5;
     if (schedule && item) try { const min = requiredStart(this.store.document(), item.id); if (min && min > this.startDate) this.startDate = min; } catch { /* blockers are explained in the preview */ }
     this.original = this.fingerprint(); this.changeDetector.detectChanges(); this.dialog.nativeElement.showModal();
   }

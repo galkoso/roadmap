@@ -85,7 +85,7 @@ test('two tabs refuse stale writes and offer reload while preserving in-memory b
   await second.getByRole('button', { name: 'כותרת חדשה' }).click(); await second.getByLabel('שם הכותרת').fill('שינוי ישן'); await second.getByRole('button', { name: 'שמירת כותרת' }).click();
   await expect(second.getByRole('alert')).toContainText('בלשונית אחרת'); await expect(second.locator('.save-state')).not.toHaveText('נשמר');
   expect((await planning(page)).document.workItems.some((w: any) => w.title === 'שינוי ישן')).toBe(false);
-  await second.getByRole('button', { name: 'טעינת הגרסה המקומית החדשה' }).click(); await saved(second); await expect(second.locator('.work-title').filter({ hasText: 'תכנון מהלשונית הראשונה' })).toBeVisible();
+  await second.getByRole('button', { name: 'טעינת הגרסה החדשה' }).click(); await saved(second); await expect(second.locator('.work-title').filter({ hasText: 'תכנון מהלשונית הראשונה' })).toBeVisible();
 });
 test('view changes and out-of-range navigation preserve dates; sticky dates and narrow layout', async ({ page }) => {
   const before = await planning(page); await page.getByRole('button', { name: 'שבועות', exact: true }).click(); await saved(page);

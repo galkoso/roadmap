@@ -1,6 +1,8 @@
 import { expect, Page, test } from '@playwright/test';
 import { clone, palette, RoadmapDocument, SCHEMA_VERSION } from '../src/app/core/model';
 import { initialPreferences, seedDocument } from '../src/app/core/seed';
+import { currentPlanningPeriod } from '../src/app/core/planning';
+const OCT = '2026-10', NOV = '2026-11';
 async function saved(page: Page) { await expect(page.locator('.save-state')).toHaveText('נשמר'); }
 async function stored(page: Page) {
   return page.evaluate(async () => {
@@ -17,15 +19,20 @@ async function replace(page: Page, value: any) {
 }
 const pane = (page: Page, key: string) => page.locator(`[data-pane="${key}"]`);
 const row = (page: Page, key: string, id: string) => pane(page, key).locator(`[data-task="${id}"]`);
-async function capacity(page: Page, value: string) {
-  await page.getByLabel('ימי עבודה זמינים לצוות', { exact: true }).fill(value);
-  await page.locator('.planning-budget-input').getByRole('button', { name: 'שמירה', exact: true }).click();
-  await expect.poll(async () => {
-    const state = await stored(page), teamId = state.preferences.planning?.activeTeamId ?? state.document.teams[0].id;
-    return state.document.planning.teamCapacities.find((item: any) => item.teamId === teamId)?.availableWorkingDays;
-  }).toBe(Number(value));
+async function period(page: Page, value: string) {
+  await page.getByLabel('שנת תכנון', { exact: true }).fill(value.slice(0, 4)); await page.getByLabel('שנת תכנון', { exact: true }).press('Tab');
+  await page.getByLabel('חודש תכנון', { exact: true }).selectOption(value.slice(5));
+  await expect.poll(async () => (await stored(page)).preferences.planning.activePeriod).toBe(value); await saved(page);
+}
+async function availability(page: Page, id: string, value: string) {
+  const person = page.locator(`[data-member="${id}"]`), month = `${await page.getByLabel('שנת תכנון', { exact: true }).inputValue()}-${await page.getByLabel('חודש תכנון', { exact: true }).inputValue()}`;
+  await person.getByRole('spinbutton').fill(value); await person.getByRole('button', { name: 'שמירה', exact: true }).click();
+  await expect.poll(async () => (await stored(page)).document.planning.plans.find((plan: any) => plan.period === month)?.teamCapacities.flatMap((capacity: any) => capacity.memberAvailability).find((member: any) => member.memberId === id)?.availableWorkingDays).toBe(Number(value));
   await saved(page);
 }
+async function add(page: Page, id: string) { await row(page, 'candidates', id).getByRole('button', { name: '＋ לתכנון', exact: true }).click(); await expect(row(page, 'selected', id)).toBeVisible(); }
+async function assign(page: Page, id: string, member: string) { await row(page, 'selected', id).getByRole('combobox', { name: 'אחראי בתכנון', exact: false }).selectOption(member); }
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/planning'); await saved(page);
   const document: RoadmapDocument = { ...seedDocument(), dependencies: [], members: [
@@ -38,214 +45,127 @@ test.beforeEach(async ({ page }) => {
     { id: 'other', title: 'משימה לצוות אחר', teamId: 'team-b', workItemId: 'work-a', estimatedWorkingDays: 4, assigneeId: null },
     { id: 'no-team', title: 'משימה ללא צוות', teamId: null, workItemId: null, estimatedWorkingDays: 1, assigneeId: null }
   ].map((task, order) => ({ ...task, order, planningState: 'backlog', notes: 'הערות לשימור', status: 'in_progress', color: palette[0] })) };
-  await replace(page, { document, preferences: { ...initialPreferences(), backlog: { mode: 'teams', collapsed: ['team:team-c'], scrollTop: 0 } } });
+  await replace(page, { document, preferences: { ...initialPreferences(), planning: { activeTeamId: 'team-a', activePeriod: OCT, expandedTeamIds: [], collapsedGroups: [] }, backlog: { mode: 'teams', collapsed: ['team:team-c'], scrollTop: 0 } } });
 });
 
-test('route, active link, Back/Forward and manual capacities survive team switches and refresh', async ({ page }) => {
-  await expect(page.getByRole('heading', { level: 1, name: 'תכנון חודשי', exact: true })).toBeVisible();
+test('month and year isolate tasks and people availability, persist on reload and survive navigation', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'תכנון חודשי', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByTestId('planning-remaining')).toHaveText('טרם הוזנה קיבולת');
-  await capacity(page, '40.5'); await page.getByRole('button', { name: 'צוות ב׳', exact: true }).click();
-  await expect(page.getByLabel('ימי עבודה זמינים לצוות', { exact: true })).toHaveValue(''); await capacity(page, '0');
-  await expect.poll(async () => (await stored(page)).document.planning.teamCapacities.find((item: any) => item.teamId === 'team-b')?.availableWorkingDays).toBe(0);
-  await page.reload(); await saved(page); await expect(page.getByRole('button', { name: 'צוות ב׳', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByLabel('ימי עבודה זמינים לצוות', { exact: true })).toHaveValue('0');
-  await page.getByRole('button', { name: 'צוות א׳', exact: true }).click(); await expect(page.getByLabel('ימי עבודה זמינים לצוות', { exact: true })).toHaveValue('40.5');
-  await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await page.goBack(); await expect(page).toHaveURL(/\/planning$/);
-  await page.goForward(); await expect(page).toHaveURL(/\/backlog$/); await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click();
-  await expect(page.getByLabel('ימי עבודה זמינים לצוות', { exact: true })).toHaveValue('40.5');
+  await availability(page, 'm-a', '10'); await add(page, 'a'); await assign(page, 'a', 'm-a');
+  await period(page, NOV); await expect(row(page, 'selected', 'a')).toHaveCount(0); await expect(page.locator('[data-member="m-a"] input')).toHaveValue('');
+  await expect(row(page, 'candidates', 'a')).toHaveCount(0); await availability(page, 'm-a', '4'); await add(page, 'b');
+  await period(page, '2027-10'); await expect(pane(page, 'selected').locator('.planning-task')).toHaveCount(0); await expect(page.getByTestId('planning-available')).toContainText('0');
+  await period(page, OCT); await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(row(page, 'selected', 'b')).toHaveCount(0);
+  await expect(page.getByTestId('remaining-m-a')).toHaveText('5 ימי עבודה');
+  await period(page, NOV); await page.reload(); await saved(page); await expect(page.getByLabel('חודש תכנון', { exact: true })).toHaveValue('11');
+  await expect(row(page, 'selected', 'b')).toBeVisible(); await expect(page.locator('[data-member="m-a"] input')).toHaveValue('4');
+  await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await page.goBack(); await expect(page).toHaveURL(/\/planning$/); await expect(row(page, 'selected', 'b')).toBeVisible();
+  await page.goForward(); await expect(page).toHaveURL(/\/backlog$/); await expect(page.getByTestId('backlog-row-a')).toBeVisible();
 });
 
-test('soldier breakdown stays independent, warns on excess and rejects blank saves explicitly', async ({ page }) => {
-  await capacity(page, '40'); await page.getByRole('button', { name: 'פירוט לפי חיילים', exact: true }).click();
-  await page.getByLabel('דנה', { exact: true }).fill('15'); await page.locator('.planning-member').filter({ has: page.getByLabel('דנה', { exact: true }) }).getByRole('button', { name: 'שמירה', exact: true }).click();
-  await page.getByLabel('אורי', { exact: true }).fill('10'); await page.locator('.planning-member').filter({ has: page.getByLabel('אורי', { exact: true }) }).getByRole('button', { name: 'שמירה', exact: true }).click(); await saved(page);
-  await expect(page.locator('.planning-distribution')).toContainText('ימי עבודה שטרם חולקו: 15');
-  await capacity(page, '20'); await expect(page.locator('.planning-distribution')).toContainText('חורג ב־5');
-  await page.getByLabel('ימי עבודה זמינים לצוות', { exact: true }).fill(''); await page.locator('.planning-budget-input button').click();
-  await expect(page.getByRole('alert')).toContainText('יש להזין'); expect((await stored(page)).document.planning.teamCapacities[0].availableWorkingDays).toBe(20);
-  await page.getByLabel('ימי עבודה זמינים לצוות', { exact: true }).fill('20'); await page.locator('.planning-budget-input button').click();
-  await page.reload(); await saved(page); await expect(page.getByLabel('דנה', { exact: true })).toHaveValue('15');
-  await page.getByRole('button', { name: 'צוות ג׳', exact: true }).click(); await page.getByRole('button', { name: 'פירוט לפי חיילים', exact: true }).click();
-  await expect(page.getByText('אין חיילים בצוות.', { exact: false })).toBeVisible();
-  expect((await stored(page)).document.tasks.every((task: any) => task.assigneeId === (task.id === 'a' ? 'm-a' : null))).toBe(true);
+test('team total comes from people; assignment and reassignment update personal balances without changing task assignees', async ({ page }) => {
+  await expect(page.getByLabel('ימי עבודה זמינים לצוות', { exact: true })).toHaveCount(0);
+  await availability(page, 'm-a', '15'); await availability(page, 'm-b', '10'); await expect(page.getByTestId('planning-available')).toContainText('25');
+  const tasks = (await stored(page)).document.tasks; await add(page, 'a'); await add(page, 'b'); await assign(page, 'a', 'm-a'); await assign(page, 'b', 'm-a');
+  await expect(page.getByTestId('remaining-m-a')).toHaveText('7 ימי עבודה'); await expect(page.getByTestId('remaining-m-b')).toHaveText('10 ימי עבודה');
+  await assign(page, 'a', 'm-b'); await expect(page.getByTestId('remaining-m-a')).toHaveText('12 ימי עבודה'); await expect(page.getByTestId('remaining-m-b')).toHaveText('5 ימי עבודה');
+  await availability(page, 'm-b', '4.5'); await expect(page.getByTestId('remaining-m-b')).toHaveText('-0.5 ימי עבודה'); await expect(page.locator('[data-member="m-b"]')).toContainText('חריגה של 0.5');
+  await expect(page.getByTestId('planning-available')).toContainText('19.5'); await expect(page.getByTestId('planning-remaining')).toContainText('11.5');
+  expect((await stored(page)).document.tasks).toEqual(tasks);
+  const input = page.locator('[data-member="m-a"] input'); await input.fill(''); await page.locator('[data-member="m-a"] button').click(); await expect(page.getByRole('alert')).toContainText('יש להזין');
+  expect((await stored(page)).document.planning.plans[0].teamCapacities[0].memberAvailability.find((m: any) => m.memberId === 'm-a').availableWorkingDays).toBe(15);
+  await input.fill('15'); await page.locator('[data-member="m-a"] button').click();
+  await page.getByRole('button', { name: 'צוות ג׳', exact: true }).click(); await expect(page.getByText('אין אנשים בצוות.', { exact: false })).toBeVisible();
 });
 
-test('membership moves only between planning panes, opens destinations, supports Undo and keeps original backlog unchanged', async ({ page }) => {
-  const before = await stored(page); await capacity(page, '4.5');
-  const candidateGroup = pane(page, 'candidates').locator('[data-work="work-a"]'), selectedGroup = pane(page, 'selected').locator('[data-work="work-a"]');
-  await row(page, 'candidates', 'a').getByRole('button', { name: '＋ לתכנון', exact: true }).click(); await saved(page);
-  await expect(row(page, 'candidates', 'a')).toHaveCount(0); await expect(row(page, 'selected', 'a')).toBeVisible();
-  await expect(selectedGroup.locator('.planning-work-toggle')).toContainText('1 משימות · 5 ימי עבודה');
-  await expect(candidateGroup.locator('.planning-work-toggle')).toContainText('1 משימות · 3 ימי עבודה');
-  await expect(page.getByTestId('planning-remaining')).toContainText('-0.5'); await expect(page.getByText('חריגה של 0.5 ימי עבודה', { exact: true })).toBeVisible();
-  await selectedGroup.locator('.planning-work-toggle').click(); await expect(row(page, 'selected', 'a')).toHaveCount(0);
-  await row(page, 'candidates', 'b').getByRole('button', { name: '＋ לתכנון', exact: true }).click();
-  await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(candidateGroup).toHaveCount(0);
-  await row(page, 'selected', 'a').getByRole('button', { name: 'הסרה מהתכנון משימה ראשונה', exact: true }).click();
-  await expect(row(page, 'candidates', 'a')).toBeVisible();
-  await candidateGroup.locator('.planning-work-toggle').focus(); await page.keyboard.press('Control+z');
-  await expect(row(page, 'selected', 'a')).toBeVisible(); await page.keyboard.press('Control+Shift+z'); await expect(row(page, 'candidates', 'a')).toBeVisible(); await saved(page);
-  expect((await stored(page)).document.tasks).toEqual(before.document.tasks);
-  await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await expect(page.getByTestId('backlog-row-a')).toBeVisible(); await expect(page.getByTestId('backlog-row-b')).toBeVisible();
+test('unassigned backlog selection and per-person assignment do not change the original team or assignee', async ({ page }) => {
+  await availability(page, 'm-a', '6'); await page.getByLabel('מקור המשימות לבחירה').selectOption('unassigned'); await expect(row(page, 'candidates', 'a')).toHaveCount(0);
+  await add(page, 'no-team'); await assign(page, 'no-team', 'm-a'); await expect(page.getByTestId('remaining-m-a')).toHaveText('5 ימי עבודה');
+  await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await expect(page.getByTestId('backlog-row-no-team').getByLabel('צוות לפריט משימה ללא צוות').locator('option:checked')).toHaveText('ללא צוות');
+  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await page.getByRole('button', { name: 'צוות ב׳', exact: true }).click(); await expect(row(page, 'selected', 'no-team')).toHaveCount(0); await expect(row(page, 'candidates', 'no-team')).toHaveCount(0);
+  await page.getByRole('button', { name: 'צוות א׳', exact: true }).click(); await row(page, 'selected', 'no-team').getByRole('button', { name: /^הסרה מהתכנון/ }).click();
+  await expect(row(page, 'candidates', 'no-team')).toBeVisible(); await expect(page.getByTestId('remaining-m-a')).toHaveText('6 ימי עבודה');
+  const task = (await stored(page)).document.tasks.find((t: any) => t.id === 'no-team'); expect(task).toMatchObject({ teamId: null, assigneeId: null, planningState: 'backlog' });
 });
 
-test('work identity, independent collapse, unknown effort and shared estimate editing', async ({ page }) => {
-  await capacity(page, '10');
-  await row(page, 'candidates', 'a').getByRole('button', { name: '＋ לתכנון', exact: true }).click();
-  await row(page, 'candidates', 'unknown').getByRole('button', { name: '＋ לתכנון', exact: true }).click();
-  await expect(pane(page, 'selected').locator('.planning-work')).toHaveCount(2);
-  await expect(page.getByTestId('planning-effort')).toContainText('5'); await expect(page.getByText('יתרה לפי היקף ידוע בלבד; אינה סופית', { exact: true })).toBeVisible();
-  const candidate = pane(page, 'candidates').locator('[data-work="work-a"] .planning-work-toggle');
-  await candidate.click(); await expect(row(page, 'selected', 'a')).toBeVisible();
+test('moving a task changes its planning month only and keeps its person assignment', async ({ page }) => {
+  await availability(page, 'm-a', '10'); await add(page, 'a'); await assign(page, 'a', 'm-a'); await saved(page); const tasks = (await stored(page)).document.tasks;
+  const monthInput = row(page, 'selected', 'a').getByLabel('חודש תכנון משימה ראשונה', { exact: true }); await monthInput.fill(NOV); await page.keyboard.press('Tab');
+  await expect(row(page, 'selected', 'a')).toHaveCount(0); await expect(page.getByTestId('remaining-m-a')).toHaveText('10 ימי עבודה');
+  await period(page, NOV); await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(row(page, 'selected', 'a').getByLabel('אחראי בתכנון משימה ראשונה')).toHaveValue('m-a');
+  await expect(page.getByTestId('remaining-m-a')).toHaveText('טרם הוזנה זמינות'); await availability(page, 'm-a', '6'); await expect(page.getByTestId('remaining-m-a')).toHaveText('1 ימי עבודה');
+  expect((await stored(page)).document.tasks).toEqual(tasks);
+});
+
+test('known effort, missing effort, independent groups and per-month collapse remain coherent', async ({ page }) => {
+  await availability(page, 'm-a', '10'); await add(page, 'a'); await add(page, 'unknown'); await assign(page, 'unknown', 'm-a');
+  await expect(pane(page, 'selected').locator('.planning-work')).toHaveCount(2); await expect(page.locator('[data-member="m-a"]')).toContainText('1 חסר היקף');
+  const selectedToggle = pane(page, 'selected').locator('[data-work="work-a"] .planning-work-toggle'), candidateToggle = pane(page, 'candidates').locator('[data-work="work-a"] .planning-work-toggle');
+  await candidateToggle.click(); await expect(selectedToggle).toHaveAttribute('aria-expanded', 'true');
   await row(page, 'selected', 'unknown').getByRole('button', { name: 'השלמת היקף', exact: true }).click();
-  const editor = page.getByRole('dialog', { name: 'פריט לבקלוג', exact: true }); await editor.getByLabel('משך משוער בימי עבודה').fill('7');
-  await editor.getByRole('button', { name: 'שמירת פריט', exact: true }).click(); await saved(page);
-  await expect(page.getByTestId('planning-effort')).toContainText('12'); await expect(page.getByTestId('planning-remaining')).toContainText('-2');
-  await expect(candidate).toHaveAttribute('aria-expanded', 'false'); await page.reload(); await saved(page); await expect(candidate).toHaveAttribute('aria-expanded', 'false');
+  const editor = page.getByRole('dialog', { name: 'פריט לבקלוג', exact: true }); await editor.getByLabel('משך משוער בימי עבודה').fill('12'); await editor.getByRole('button', { name: 'שמירת פריט', exact: true }).click();
+  await expect(page.getByTestId('remaining-m-a')).toHaveText('-2 ימי עבודה'); await expect(page.getByTestId('planning-effort')).toContainText('17');
+  await selectedToggle.click(); await period(page, NOV); await expect(pane(page, 'candidates').locator('[data-work="work-a"] .planning-work-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await period(page, OCT); await expect(selectedToggle).toHaveAttribute('aria-expanded', 'false'); await expect(candidateToggle).toHaveAttribute('aria-expanded', 'false');
 });
 
-test('shared handoff validates, cancels, schedules the same record outside any month and removal leaves it scheduled', async ({ page }) => {
-  await row(page, 'candidates', 'a').getByRole('button', { name: '＋ לתכנון', exact: true }).click(); await saved(page); const before = await stored(page);
-  await row(page, 'selected', 'a').getByRole('button', { name: 'ל־Roadmap', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'שיבוץ בזמן', exact: true });
-  await expect(dialog.getByLabel('אחראי למשימה משימה ראשונה')).toHaveValue('m-a');
-  await dialog.getByLabel('תאריך התחלה').fill('2027-02-05'); await expect(dialog.getByRole('alert')).toContainText('שישי');
-  await dialog.getByRole('button', { name: 'אישור שיבוץ', exact: true }).click(); expect((await stored(page)).document.tasks).toEqual(before.document.tasks);
-  await dialog.getByRole('button', { name: 'ביטול', exact: true }).click(); expect((await stored(page)).document.planning).toEqual(before.document.planning);
-  await row(page, 'selected', 'a').getByRole('button', { name: 'ל־Roadmap', exact: true }).click();
-  await dialog.getByLabel('תאריך התחלה').fill('2027-02-04'); await dialog.getByLabel('מספר ימי עבודה').fill('5'); await dialog.getByRole('button', { name: 'אישור שיבוץ', exact: true }).click(); await saved(page);
-  await expect(row(page, 'selected', 'a')).toContainText('שובצה ב־Roadmap'); await expect(page.getByTestId('planning-effort')).toContainText('5');
-  const after = await stored(page); expect(after.document.tasks).toHaveLength(before.document.tasks.length);
-  expect(after.document.tasks.find((t: any) => t.id === 'a')).toMatchObject({ ...before.document.tasks.find((t: any) => t.id === 'a'), planningState: 'scheduled', startDate: '2027-02-04', endDate: '2027-02-10' });
+test('person assignments, capacities and task selections participate in Undo/Redo', async ({ page }) => {
+  await availability(page, 'm-a', '8'); await add(page, 'a'); await assign(page, 'a', 'm-a'); await expect(page.getByTestId('remaining-m-a')).toHaveText('3 ימי עבודה');
+  await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+z'); await expect(page.getByTestId('remaining-m-a')).toHaveText('8 ימי עבודה');
+  await page.keyboard.press('Control+z'); await expect(row(page, 'selected', 'a')).toHaveCount(0); await page.keyboard.press('Control+Shift+z'); await page.keyboard.press('Control+Shift+z');
+  await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(page.getByTestId('remaining-m-a')).toHaveText('3 ימי עבודה');
+});
+
+test('shared scheduling validates dates and dependencies, preserves monthly assignment and removal leaves the schedule', async ({ page }) => {
+  await period(page, '2027-02'); await availability(page, 'm-a', '8'); await add(page, 'a'); await assign(page, 'a', 'm-a');
+  await row(page, 'selected', 'a').getByRole('button', { name: 'ל־Roadmap', exact: true }).click(); const dialog = page.getByRole('dialog', { name: 'שיבוץ בזמן', exact: true });
+  await expect(dialog.getByLabel('תאריך התחלה')).toHaveValue('2027-02-01'); await dialog.getByLabel('תאריך התחלה').fill('2027-02-05'); await expect(dialog.getByRole('alert')).toContainText('שישי');
+  await dialog.getByRole('button', { name: 'ביטול', exact: true }).click(); await expect(row(page, 'selected', 'a')).toBeVisible();
+  await row(page, 'selected', 'a').getByRole('button', { name: 'ל־Roadmap', exact: true }).click(); await dialog.getByLabel('תאריך התחלה').fill('2027-02-04'); await dialog.getByRole('button', { name: 'אישור שיבוץ', exact: true }).click();
+  await expect(row(page, 'selected', 'a')).toContainText('שובצה ב־Roadmap'); await expect(page.getByTestId('remaining-m-a')).toHaveText('3 ימי עבודה');
   await row(page, 'selected', 'a').getByRole('button', { name: 'הצג בציר הזמן', exact: true }).click(); await expect(page.getByTestId('task-bar-a-team-a')).toBeInViewport();
-  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await row(page, 'selected', 'a').getByRole('button', { name: 'הסרה מהתכנון משימה ראשונה', exact: true }).click(); await saved(page);
-  await expect(row(page, 'candidates', 'a')).toHaveCount(0); expect((await stored(page)).document.tasks).toEqual(after.document.tasks);
-  await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await expect(page.getByTestId('backlog-row-a')).toHaveCount(0);
+  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await row(page, 'selected', 'a').getByRole('button', { name: /^הסרה מהתכנון/ }).click(); await expect(page.getByTestId('remaining-m-a')).toHaveText('8 ימי עבודה');
+  await expect.poll(async () => (await stored(page)).document.planning.plans.find((p: any) => p.period === '2027-02').selectedTaskIds).toEqual([]);
+  expect((await stored(page)).document.tasks.find((t: any) => t.id === 'a')).toMatchObject({ planningState: 'scheduled', startDate: '2027-02-04', endDate: '2027-02-10' });
 });
 
-test('unscheduled dependencies remain blockers in the reused scheduling dialog', async ({ page }) => {
-  const state = await stored(page); state.document.dependencies = [{ id: 'link', predecessorId: 'b', successorId: 'a', type: 'finish_to_start', lagWorkingDays: 0 }]; await replace(page, state);
-  await row(page, 'candidates', 'a').getByRole('button', { name: '＋ לתכנון', exact: true }).click(); await saved(page); const before = await stored(page);
-  await row(page, 'selected', 'a').getByRole('button', { name: 'ל־Roadmap', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'שיבוץ בזמן', exact: true }); await expect(dialog.getByRole('alert')).toContainText('משימה שנייה');
-  await dialog.getByRole('button', { name: 'אישור שיבוץ', exact: true }).click(); await dialog.getByRole('button', { name: 'ביטול', exact: true }).click();
-  expect((await stored(page)).document.tasks).toEqual(before.document.tasks); expect((await stored(page)).document.planning).toEqual(before.document.planning);
+test('old plan migrates to current month without losing selection, availability or original data; backups roundtrip and invalid imports are atomic', async ({ page }) => {
+  const state = await stored(page), legacy = { selectedTaskIds: ['a'], teamCapacities: [{ teamId: 'team-a', availableWorkingDays: 40, memberAvailability: [{ memberId: 'm-a', availableWorkingDays: 12 }] }] };
+  state.document.schemaVersion = 4; state.document.planning = legacy; state.preferences.planning.activePeriod = currentPlanningPeriod(); await replace(page, state);
+  await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(page.getByTestId('planning-available')).toContainText('12');
+  const migrated = await stored(page); expect(migrated.document.schemaVersion).toBe(SCHEMA_VERSION); expect(migrated.document.planning.plans[0]).toMatchObject({ ...legacy, period: currentPlanningPeriod() });
+  await assign(page, 'a', 'm-a'); await page.getByRole('link', { name: 'Roadmap', exact: true }).click(); await page.getByRole('button', { name: 'ניהול צוותים וגיבוי', exact: true }).click(); await page.getByRole('button', { name: 'גיבוי ושחזור', exact: true }).click();
+  const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'ייצוא גיבוי JSON', exact: false }).click(); const stream = await (await download).createReadStream(), chunks: Buffer[] = []; for await (const chunk of stream!) chunks.push(Buffer.from(chunk)); const buffer = Buffer.concat(chunks), backup = JSON.parse(buffer.toString());
+  expect(backup.schemaVersion).toBe(SCHEMA_VERSION); expect(backup.document.planning.plans[0].taskMemberLinks).toEqual([{ taskId: 'a', memberId: 'm-a' }]);
+  const bad = clone(backup); bad.document.planning.plans[0].taskMemberLinks[0].memberId = 'missing'; const before = await stored(page);
+  await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bad)) }); await expect(page.locator('.backup-panel .field-error')).toContainText('האדם'); expect((await stored(page)).document).toEqual(before.document);
+  await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: 'monthly.json', mimeType: 'application/json', buffer }); await page.getByRole('button', { name: 'אישור והחלפת התכנון', exact: true }).click(); await saved(page);
+  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await expect(page.getByTestId('remaining-m-a')).toHaveText('7 ימי עבודה');
+});
+
+test('external member move cleans availability and planning assignments in every month', async ({ page }) => {
+  await availability(page, 'm-a', '10'); await add(page, 'a'); await assign(page, 'a', 'm-a');
+  await period(page, NOV); await availability(page, 'm-a', '12'); await add(page, 'b'); await assign(page, 'b', 'm-a');
+  await page.getByRole('link', { name: 'Roadmap', exact: true }).click(); await page.getByRole('button', { name: 'אנשי הצוותים', exact: true }).click();
+  const people = page.getByRole('dialog', { name: 'אנשי הצוותים', exact: true });
+  const first = people.locator('.member-edit').first(); await first.getByLabel('צוות', { exact: true }).selectOption('team-b'); page.once('dialog', d => d.accept()); await first.getByRole('button', { name: 'שמירת איש צוות', exact: true }).click(); await saved(page); await page.keyboard.press('Escape');
+  const doc = (await stored(page)).document; for (const plan of doc.planning.plans) { expect(plan.taskMemberLinks).toEqual([]); expect(plan.teamCapacities[0].memberAvailability).toEqual([]); }
+  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await expect(row(page, 'selected', 'b').getByRole('combobox', { name: 'אחראי בתכנון', exact: false }).locator('option:checked')).toHaveText('ללא אחראי בתכנון');
+});
+
+test('invalid year and blank availability are rejected; failed persistence retains monthly selections for retry', async ({ page }) => {
+  const year = page.getByLabel('שנת תכנון', { exact: true }); await year.fill('0'); await year.press('Tab'); await expect(page.getByRole('alert')).toContainText('שנה'); await expect(year).toHaveValue('2026'); await page.getByLabel('חודש תכנון', { exact: true }).selectOption('11'); await period(page, OCT); await expect(page.getByRole('alert')).toHaveCount(0); await saved(page);
+  await page.evaluate(() => { (window as any).__planningPut = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = () => { throw new DOMException('quota full', 'QuotaExceededError'); }; });
+  await add(page, 'a'); await expect(page.getByRole('alert')).toContainText('quota full'); await expect(page.locator('.save-state')).not.toHaveText('נשמר'); expect((await stored(page)).document.planning.plans).toEqual([]);
+  await page.evaluate(() => { IDBObjectStore.prototype.put = (window as any).__planningPut; }); await page.getByRole('button', { name: 'ניסיון שמירה נוסף', exact: true }).click();
+  await expect.poll(async () => (await stored(page)).document.planning.plans[0]?.selectedTaskIds).toEqual(['a']); await saved(page);
 });
 
 for (const width of [1440, 390]) {
-  test(`mixed selection, compact groups and keyboard disclosure at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 1000 }); await capacity(page, '20');
-    for (const id of ['a', 'solo']) await row(page, 'candidates', id).getByRole('button', { name: '＋ לתכנון', exact: true }).click();
-    const disclosure = pane(page, 'selected').locator('[data-work="work-a"] .planning-work-toggle'); await disclosure.focus(); await disclosure.press('Enter');
-    await expect(disclosure).toHaveAttribute('aria-expanded', 'false'); await expect(row(page, 'selected', 'a')).toHaveCount(0);
-    const box = await disclosure.boundingBox(); expect(box!.height).toBeLessThanOrEqual(60);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.getByRole('heading', { level: 1 }).click();
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await expect(page.getByRole('heading', { level: 1 })).toBeInViewport();
-    await page.screenshot({ path: `test-results/planning-${width}.png`, fullPage: true });
-    await disclosure.press('Space'); await expect(row(page, 'selected', 'a')).toBeVisible();
-    await page.getByRole('heading', { level: 1 }).click();
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await expect(page.getByRole('heading', { level: 1 })).toBeInViewport();
-    await page.screenshot({ path: `test-results/planning-${width}-expanded.png`, fullPage: true });
+  test(`monthly people workload and compact groups remain usable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 }); await availability(page, 'm-a', '12'); await availability(page, 'm-b', '6'); await add(page, 'a'); await add(page, 'solo'); await assign(page, 'a', 'm-a'); await assign(page, 'solo', 'm-b');
+    const toggle = pane(page, 'selected').locator('[data-work="work-a"] .planning-work-toggle'); await toggle.focus(); await toggle.press('Enter'); await expect(toggle).toHaveAttribute('aria-expanded', 'false'); await expect(row(page, 'selected', 'a')).toHaveCount(0);
+    expect((await toggle.boundingBox())!.height).toBeLessThanOrEqual(60); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole('heading', { level: 1 }).click(); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: `test-results/monthly-people-${width}-collapsed.png`, fullPage: true });
+    await toggle.press('Space'); await expect(row(page, 'selected', 'a')).toBeVisible(); await page.getByRole('heading', { level: 1 }).click(); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: `test-results/monthly-people-${width}.png`, fullPage: true });
   });
 }
-
-test('JSON backup roundtrip includes capacities and preferences; invalid import is atomic and old backup starts empty', async ({ page }) => {
-  await capacity(page, '20'); await row(page, 'candidates', 'a').getByRole('button', { name: '＋ לתכנון', exact: true }).click(); await saved(page); const before = await stored(page);
-  await page.getByRole('link', { name: 'Roadmap', exact: true }).click(); await page.getByRole('button', { name: 'ניהול צוותים וגיבוי', exact: true }).click(); await page.getByRole('button', { name: 'גיבוי ושחזור', exact: true }).click();
-  const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'ייצוא גיבוי JSON', exact: false }).click();
-  const stream = await (await download).createReadStream(), chunks: Buffer[] = []; for await (const chunk of stream!) chunks.push(Buffer.from(chunk)); const buffer = Buffer.concat(chunks), backup = JSON.parse(buffer.toString());
-  expect(backup.schemaVersion).toBe(SCHEMA_VERSION); expect(backup.document.planning).toEqual(before.document.planning);
-  const bad = clone(backup); bad.document.planning.selectedTaskIds.push('missing'); const snapshot = await stored(page);
-  await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bad)) });
-  await expect(page.locator('.backup-panel .field-error')).toContainText('משימה חסרה'); expect((await stored(page)).document).toEqual(snapshot.document);
-  await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: 'planning.json', mimeType: 'application/json', buffer }); await page.getByRole('button', { name: 'אישור והחלפת התכנון', exact: true }).click(); await saved(page);
-  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(page.getByLabel('ימי עבודה זמינים לצוות', { exact: true })).toHaveValue('20');
-  await page.getByRole('link', { name: 'Roadmap', exact: true }).click(); await page.getByRole('button', { name: 'ניהול צוותים וגיבוי', exact: true }).click(); await page.getByRole('button', { name: 'גיבוי ושחזור', exact: true }).click();
-  const old = clone(backup); old.schemaVersion = old.document.schemaVersion = 3; delete old.document.planning; delete old.preferences.planning;
-  await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: 'v3.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(old)) }); await page.getByRole('button', { name: 'אישור והחלפת התכנון', exact: true }).click(); await saved(page);
-  const imported = await stored(page); expect(imported.document.tasks).toEqual(backup.document.tasks); expect(imported.document.planning).toEqual({ selectedTaskIds: [], teamCapacities: [] });
-});
-
-test('real team reassignment follows the task, no-team selection is explicit, and deletion cleans membership', async ({ page }) => {
-  await row(page, 'candidates', 'a').getByRole('button', { name: '＋ לתכנון', exact: true }).click(); await saved(page);
-  await page.getByRole('link', { name: 'בקלוג', exact: true }).click();
-  await page.getByTestId('backlog-row-a').getByLabel('צוות לפריט משימה ראשונה').selectOption('team-b'); await saved(page);
-  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await expect(row(page, 'selected', 'a')).toHaveCount(0);
-  await page.getByRole('button', { name: 'צוות ב׳', exact: true }).click(); await expect(row(page, 'selected', 'a')).toBeVisible();
-  await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await page.getByTestId('backlog-row-a').getByLabel('צוות לפריט משימה ראשונה').selectOption({ label: 'ללא צוות' }); await saved(page);
-  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click();
-  const unresolved = page.getByRole('region', { name: 'משימות בתכנון ללא צוות' }); await expect(unresolved).toContainText('משימה ראשונה');
-  await unresolved.getByRole('button', { name: 'עדכון צוות', exact: true }).click(); const dialog = page.getByRole('dialog', { name: 'פריט לבקלוג', exact: true });
-  await dialog.getByLabel('צוות', { exact: true }).selectOption('team-a'); await dialog.getByLabel('כותרת הפריט').fill('משימה ששונתה'); await dialog.getByRole('button', { name: 'שמירת פריט', exact: true }).click(); await saved(page);
-  await expect(unresolved).toHaveCount(0); await page.getByRole('button', { name: 'צוות א׳', exact: true }).click(); await expect(row(page, 'selected', 'a')).toContainText('משימה ששונתה');
-  await row(page, 'selected', 'a').locator('.planning-task-title').click(); page.once('dialog', d => d.accept()); await dialog.getByRole('button', { name: 'מחיקת פריט', exact: true }).click();
-  await expect.poll(async () => (await stored(page)).document.planning.selectedTaskIds).toEqual([]); await expect(row(page, 'selected', 'a')).toHaveCount(0);
-});
-
-test('navigation through planning preserves Roadmap range and backlog collapse state', async ({ page }) => {
-  await page.getByRole('link', { name: 'Roadmap', exact: true }).click(); await page.getByRole('button', { name: 'שבועות', exact: true }).click();
-  const viewport = page.locator('.timeline-viewport'); await viewport.evaluate(el => el.scrollLeft += 130);
-  const state = await viewport.evaluate(el => ({ left: el.scrollLeft, range: el.querySelector('.date-header')!.getAttribute('data-range-start') }));
-  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await page.getByRole('link', { name: 'בקלוג', exact: true }).click();
-  const heading = page.locator('[data-group="team:team-a"] > .backlog-group-heading'); await heading.click(); await expect(heading).toHaveAttribute('aria-expanded', 'false');
-  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await page.getByRole('link', { name: 'Roadmap', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'שבועות', exact: true })).toHaveClass(/active/);
-  await expect.poll(() => viewport.evaluate(el => el.scrollLeft)).toBe(state.left); expect(await page.locator('.date-header').getAttribute('data-range-start')).toBe(state.range);
-  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await expect(heading).toHaveAttribute('aria-expanded', 'false');
-});
-
-test('planning save failure preserves stored data, keeps one in-memory selection and reports an unsaved state', async ({ page }) => {
-  const before = await stored(page);
-  await page.evaluate(() => { (window as any).__planningPut = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = () => { throw new DOMException('quota full', 'QuotaExceededError'); }; });
-  await row(page, 'candidates', 'a').getByRole('button', { name: '＋ לתכנון', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('quota full'); await expect(page.locator('.save-state')).not.toHaveText('נשמר');
-  await expect(row(page, 'selected', 'a')).toHaveCount(1); expect((await stored(page)).document.planning).toEqual(before.document.planning);
-  await page.evaluate(() => { IDBObjectStore.prototype.put = (window as any).__planningPut; }); await page.getByRole('button', { name: 'ניסיון שמירה נוסף', exact: true }).click(); await saved(page);
-  await expect.poll(async () => (await stored(page)).document.planning.selectedTaskIds).toEqual(['a']);
-  await page.reload(); await saved(page); await expect(row(page, 'selected', 'a')).toHaveCount(1);
-});
-
-test('unassigned backlog can be selected for a team plan, filtered, reloaded, undone and scheduled without team assignment', async ({ page }) => {
-  const source = page.getByLabel('מקור המשימות לבחירה', { exact: true });
-  await expect(source).toHaveValue('all'); await expect(row(page, 'candidates', 'no-team')).toBeVisible();
-  await source.selectOption('team'); await expect(row(page, 'candidates', 'no-team')).toHaveCount(0); await expect(row(page, 'candidates', 'a')).toBeVisible();
-  await source.selectOption('unassigned'); await expect(row(page, 'candidates', 'a')).toHaveCount(0);
-  await row(page, 'candidates', 'no-team').getByRole('button', { name: '＋ לתכנון', exact: true }).click();
-  await expect(row(page, 'selected', 'no-team')).toContainText('ללא צוות'); await expect(row(page, 'candidates', 'no-team')).toHaveCount(0);
-  await expect(source).toHaveValue('unassigned'); await expect(page.getByTestId('planning-effort')).toContainText('1');
-  await expect.poll(async () => (await stored(page)).document.planning.taskTeamLinks).toEqual([{ taskId: 'no-team', teamId: 'team-a' }]);
-  await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+z');
-  await expect(row(page, 'candidates', 'no-team')).toBeVisible(); await expect(row(page, 'selected', 'no-team')).toHaveCount(0);
-  await page.keyboard.press('Control+Shift+z'); await expect(row(page, 'selected', 'no-team')).toBeVisible(); await saved(page);
-  await page.getByRole('link', { name: 'בקלוג', exact: true }).click();
-  await expect(page.getByTestId('backlog-row-no-team').getByLabel('צוות לפריט משימה ללא צוות').locator('option:checked')).toHaveText('ללא צוות');
-  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click();
-  await page.getByRole('button', { name: 'צוות ב׳', exact: true }).click(); await expect(row(page, 'selected', 'no-team')).toHaveCount(0); await expect(row(page, 'candidates', 'no-team')).toHaveCount(0);
-  await page.getByRole('button', { name: 'צוות א׳', exact: true }).click();
-  await expect.poll(async () => (await stored(page)).preferences.planning.activeTeamId).toBe('team-a');
-  await saved(page); await page.reload(); await saved(page);
-  await expect(source).toHaveValue('unassigned'); await expect(row(page, 'selected', 'no-team')).toBeVisible();
-  await row(page, 'selected', 'no-team').getByRole('button', { name: 'ל־Roadmap', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'שיבוץ בזמן', exact: true }); await expect(dialog.getByLabel('צוות', { exact: true }).locator('option:checked')).toHaveText('ללא צוות');
-  await dialog.getByLabel('תאריך התחלה').fill('2027-02-04'); await dialog.getByRole('button', { name: 'אישור שיבוץ', exact: true }).click(); await saved(page);
-  const state = await stored(page), scheduled = state.document.tasks.find((task: any) => task.id === 'no-team');
-  expect(scheduled).toMatchObject({ teamId: null, workItemId: null, planningState: 'scheduled' });
-  expect(state.document.planning.taskTeamLinks).toEqual([{ taskId: 'no-team', teamId: 'team-a' }]);
-  await expect(row(page, 'selected', 'no-team')).toContainText('שובצה ב־Roadmap');
-  await row(page, 'selected', 'no-team').getByRole('button', { name: 'הסרה מהתכנון משימה ללא צוות', exact: true }).click(); await saved(page);
-  await expect(row(page, 'candidates', 'no-team')).toHaveCount(0); expect((await stored(page)).document.tasks.find((task: any) => task.id === 'no-team')).toEqual(scheduled);
-});
-
-test('removing an unassigned selection restores the candidate and clears only the planning link', async ({ page }) => {
-  const source = page.getByLabel('מקור המשימות לבחירה', { exact: true }); await source.selectOption('unassigned');
-  await row(page, 'candidates', 'no-team').getByRole('button', { name: '＋ לתכנון', exact: true }).click();
-  await row(page, 'selected', 'no-team').getByRole('button', { name: 'הסרה מהתכנון משימה ללא צוות', exact: true }).click();
-  await expect(row(page, 'candidates', 'no-team')).toBeVisible();
-  await expect.poll(async () => (await stored(page)).document.planning.selectedTaskIds).toEqual([]);
-  const state = await stored(page); expect(state.document.planning.taskTeamLinks).toBeUndefined();
-  expect(state.document.tasks.find((task: any) => task.id === 'no-team')).toMatchObject({ teamId: null, planningState: 'backlog' });
-});

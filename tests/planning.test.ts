@@ -98,7 +98,7 @@ describe('people capacity and planned workload', () => {
     expect(task(doc, 'no-team')).toEqual(task(fixture(), 'no-team')); expect(planningMemberId(doc, 'no-team', OCT)).toBe('member-a');
     expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ available: null, known: 4, remaining: null });
     expect(() => assignPlanningTask(doc, 'no-team', 'other-member', OCT)).toThrow(/צוות/);
-    expect(() => assignPlanningTask(doc, 'a', 'member-a', OCT)).toThrow(/בחודש/);
+    expect(() => assignPlanningTask(doc, 'a', 'member-a', OCT)).toThrow(/החודש/);
   });
   it('reports unknown effort and unavailable capacity separately; effort edits update the same monthly record', () => {
     let doc = assignPlanningTask(select(fixture(), 'unknown'), 'unknown', 'member-a', OCT);

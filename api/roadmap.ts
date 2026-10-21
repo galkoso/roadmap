@@ -1,5 +1,7 @@
 import { validateDocument } from '../src/app/core/validation';
 
+declare const process: { env: Record<string, string | undefined> };
+
 // Compare-and-set happens inside Redis, so concurrent serverless instances cannot overwrite a newer save.
 export const saveScript = `
 local current = redis.call('GET', KEYS[1])
@@ -49,9 +51,9 @@ export default async function handler(request: Request, response: Response): Pro
     let document, expectedRevision;
     try {
       const body = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
-      if (!body || typeof body !== 'object' || Buffer.byteLength(JSON.stringify(body)) > 3_500_000) throw new Error('Invalid request');
+      if (!body || typeof body !== 'object' || new TextEncoder().encode(JSON.stringify(body)).byteLength > 3_500_000) throw new Error('Invalid request');
       expectedRevision = body.expectedRevision;
-      if (expectedRevision !== null && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)) throw new Error('Invalid revision');
+      if (expectedRevision !== null && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || expectedRevision >= Number.MAX_SAFE_INTEGER)) throw new Error('Invalid revision');
       document = validateDocument(body.document);
     } catch { response.status(400).json({ error: 'Invalid roadmap or revision; existing data was not changed' }); return; }
     document.revision = (expectedRevision ?? 0) + 1;

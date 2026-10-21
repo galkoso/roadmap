@@ -12,6 +12,7 @@ export type Task = ScheduledTask | BacklogTask;
 export const isScheduled = (task: Task): task is ScheduledTask => task.planningState === 'scheduled';
 export interface Dependency { id: string; predecessorId: string; successorId: string; type: 'finish_to_start'; lagWorkingDays: number }
 export interface TeamCapacity {
+  // Legacy manually entered total is retained for backup compatibility; current capacity is the sum of member availability.
   teamId: string; availableWorkingDays: number | null;
   memberAvailability: { memberId: string; availableWorkingDays: number }[];
 }
