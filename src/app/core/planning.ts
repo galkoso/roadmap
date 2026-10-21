@@ -1,5 +1,5 @@
-import { clone, isScheduled, MonthlyPlan, PlanningCandidateSource, PlanningPane, PlanningPreferences, RoadmapDocument, Task } from './model';
-import { duration, today } from './dates';
+import { clone, isScheduled, MonthlyPlan, PlanningCandidateSource, PlanningPane, PlanningPreferences, RoadmapDocument, Task } from './model.js';
+import { duration, today } from './dates.js';
 
 export const currentPlanningPeriod = (): string => today().slice(0, 7);
 export const validPlanningPeriod = (value: unknown): value is string => typeof value === 'string' && /^(19\d{2}|[2-9]\d{3})-(0[1-9]|1[0-2])$/.test(value);

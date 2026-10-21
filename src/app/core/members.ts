@@ -1,4 +1,4 @@
-import { clone, RoadmapDocument, Task, TeamMember } from './model';
+import { clone, RoadmapDocument, Task, TeamMember } from './model.js';
 export const membersForTeam = (doc: RoadmapDocument, teamId: string | null): TeamMember[] =>
   doc.members.filter(m => m.teamId === teamId).sort((a, b) => a.order - b.order);
 export function memberLabel(doc: RoadmapDocument, member: TeamMember): string {

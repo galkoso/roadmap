@@ -1,6 +1,6 @@
-import { clone, Dependency, isScheduled, RoadmapDocument, ScheduledTask, Task } from './model';
-import { changeTaskTeam, validateAssignment } from './members';
-import { addWorkingDays, duration, nextWorkingDay, validateRange, workingDifference } from './dates';
+import { clone, Dependency, isScheduled, RoadmapDocument, ScheduledTask, Task } from './model.js';
+import { changeTaskTeam, validateAssignment } from './members.js';
+import { addWorkingDays, duration, nextWorkingDay, validateRange, workingDifference } from './dates.js';
 export function topological(doc: RoadmapDocument): string[] {
   const indegree = new Map(doc.tasks.map(t => [t.id, 0]));
   const outgoing = new Map<string, string[]>();

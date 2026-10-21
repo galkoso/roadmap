@@ -1,4 +1,4 @@
-import { validateDocument } from '../src/app/core/validation';
+import { validateDocument } from '../src/app/core/validation.js';
 
 declare const process: { env: Record<string, string | undefined> };
 

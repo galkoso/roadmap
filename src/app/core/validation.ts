@@ -1,7 +1,7 @@
-import { Backup, isScheduled, RoadmapDocument, SCHEMA_VERSION, ViewPreferences } from './model';
-import { addWorkingDays, epoch, validateRange } from './dates';
-import { currentPlanningPeriod, validCapacityDays, validPlanningPeriod } from './planning';
-import { topological } from './scheduler';
+import { Backup, isScheduled, RoadmapDocument, SCHEMA_VERSION, ViewPreferences } from './model.js';
+import { addWorkingDays, epoch, validateRange } from './dates.js';
+import { currentPlanningPeriod, validCapacityDays, validPlanningPeriod } from './planning.js';
+import { topological } from './scheduler.js';
 function assert(test: unknown, message = 'מבנה קובץ הגיבוי אינו תקין'): asserts test { if (!test) throw new Error(message); }
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === 'string';

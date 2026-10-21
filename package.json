@@ -8,11 +8,12 @@
   },
   "scripts": {
     "start": "ng serve --host 127.0.0.1",
-    "build": "ng build",
+    "build": "pnpm check:api && ng build",
     "preview": "node scripts/serve-static.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:api": "tsc -p tsconfig.api.json"
   },
   "dependencies": {
     "@angular/common": "22.2.2",
