@@ -1,3 +1,4 @@
+import { authenticated } from '../server/auth.mjs';
 import { validateDocument } from '../src/app/core/validation.js';
 
 declare const process: { env: Record<string, string | undefined> };
@@ -26,6 +27,7 @@ export default async function handler(request: Request, response: Response): Pro
   if (!['GET', 'PUT'].includes(request.method ?? '')) {
     response.setHeader('Allow', 'GET, PUT'); response.status(405).json({ error: 'Method not allowed' }); return;
   }
+  if (!authenticated(request.headers)) { response.status(401).json({ error: 'Login required' }); return; }
   const url = process.env['UPSTASH_REDIS_REST_URL'], token = process.env['UPSTASH_REDIS_REST_TOKEN'];
   if (!url || !token) { response.status(503).json({ error: 'Shared database is not configured' }); return; }
   const key = process.env['ROADMAP_STORAGE_KEY'] ?? 'roadmap:shared:v1';

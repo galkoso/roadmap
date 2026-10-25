@@ -1,4 +1,4 @@
-import { expect, Page, test } from '@playwright/test';
+import { expect, Page, test } from './fixtures';
 import { SCHEMA_VERSION } from '../src/app/core/model';
 async function saved(page: Page) { await expect(page.locator('.save-state')).toHaveText('נשמר'); }
 async function planning(page: Page) {

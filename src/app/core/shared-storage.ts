@@ -12,6 +12,10 @@ export class SharedRoadmapStorage implements StorageAdapter {
       method, cache: 'no-store', headers: { 'Content-Type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000)
     });
+    if (response.status === 401) {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('roadmap-auth-required'));
+      throw new Error('יש להתחבר מחדש כדי להמשיך לתכנון המשותף.');
+    }
     if (response.status === 409) throw new RevisionConflict();
     if (!response.ok) throw new Error('לא ניתן להתחבר לתכנון המשותף. בדקו את החיבור ואת הגדרת מסד הנתונים בשרת.');
     return response.json();

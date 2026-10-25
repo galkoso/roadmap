@@ -4,6 +4,7 @@
   "buildCommand": "pnpm build",
   "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "dist/roadmap/browser",
+  "git": { "deploymentEnabled": true },
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
     { "source": "/roadmap", "destination": "/index.html" },

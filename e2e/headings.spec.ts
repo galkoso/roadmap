@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 test('team heading is date-free, stays visible on both pages and contains scheduled and backlog tasks', async ({ page }) => {
   await page.goto('/backlog'); await expect(page.locator('.save-state')).toHaveText('נשמר');
   await page.getByRole('button', { name: 'כותרת חדשה' }).click();

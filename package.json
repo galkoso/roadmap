@@ -7,7 +7,7 @@
     "node": ">=22.22.3 <23 || >=24.15.0 <25 || >=26 <27"
   },
   "scripts": {
-    "start": "ng serve --host 127.0.0.1",
+    "start": "node scripts/serve-dev.mjs",
     "build": "pnpm check:api && ng build",
     "preview": "node scripts/serve-static.mjs",
     "test": "vitest run",

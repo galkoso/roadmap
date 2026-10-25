@@ -1,4 +1,4 @@
-import { expect, Page, test } from '@playwright/test';
+import { expect, Page, test } from './fixtures';
 async function saved(page: Page) { await expect(page.locator('.save-state')).toHaveText('נשמר'); }
 async function planning(page: Page) {
   return page.evaluate(async () => {

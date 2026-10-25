@@ -5,6 +5,7 @@ import { RoadmapStore } from '../src/app/core/store';
 import { clone } from '../src/app/core/model';
 import { initialPreferences, seedDocument } from '../src/app/core/seed';
 import { RevisionConflict } from '../src/app/core/storage';
+import { loginHandler } from '../server/auth.mjs';
 import handler, { saveScript } from '../api/roadmap';
 
 const stores: RoadmapStore[] = [];
@@ -81,6 +82,8 @@ function response() {
     setHeader(name: string, value: string) { this.headers[name] = value; },
     status(code: number) { this.code = code; return this; }, json(body: unknown) { this.body = body; } };
 }
+let sessionCookie = '';
+function authorizedHeaders(headers: Record<string, string> = {}) { return { cookie: sessionCookie, ...headers }; }
 function mockRedis() {
   vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example'); vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'server-secret');
   return vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
@@ -92,34 +95,40 @@ function mockRedis() {
   }));
 }
 describe('shared server API', () => {
+  beforeEach(async () => {
+    vi.stubEnv('ROADMAP_SESSION_SECRET', 'shared-api-tests');
+    const result = response();
+    await loginHandler({ method: 'POST', headers: { 'content-type': 'application/json' }, body: { password: 'ztube123ztube123' } }, result);
+    sessionCookie = result.headers['Set-Cookie'].split(';')[0];
+  });
   it('validates data and uses atomic compare-and-set for new and existing documents', async () => {
     mockRedis();
     const save = async (document: unknown, expectedRevision: number | null) => {
-      const result = response(); await handler({ method: 'PUT', headers: { 'content-type': 'application/json' }, body: { document, expectedRevision } }, result); return result;
+      const result = response(); await handler({ method: 'PUT', headers: authorizedHeaders({ 'content-type': 'application/json' }), body: { document, expectedRevision } }, result); return result;
     };
     const first = await save(seedDocument(), null); expect(first.code).toBe(200); expect(first.body.revision).toBe(1);
     const stale = await save(seedDocument(), null); expect(stale.code).toBe(409);
     const next = seedDocument(); next.teams[0].name = 'New shared name';
     expect((await save(next, 1)).body.revision).toBe(2);
     const before = clone(shared); expect((await save({ schemaVersion: 99 }, 2)).code).toBe(400); expect(shared).toEqual(before);
-    const loaded = response(); await handler({ method: 'GET', headers: {} }, loaded);
+    const loaded = response(); await handler({ method: 'GET', headers: authorizedHeaders() }, loaded);
     expect(loaded.body.document.teams[0].name).toBe('New shared name');
     expect(loaded.headers['Cache-Control']).toBe('no-store'); expect(JSON.stringify(loaded.body)).not.toContain('server-secret');
   });
   it('preserves empty arrays in the JSON sent to Redis', async () => {
     mockRedis(); const document = seedDocument(); document.dependencies = []; document.planning.plans = [];
-    const result = response(); await handler({ method: 'PUT', headers: { 'content-type': 'application/json' }, body: { document, expectedRevision: null } }, result);
+    const result = response(); await handler({ method: 'PUT', headers: authorizedHeaders({ 'content-type': 'application/json' }), body: { document, expectedRevision: null } }, result);
     expect(result.code).toBe(200); expect(shared!.dependencies).toEqual([]); expect(shared!.planning.plans).toEqual([]);
     expect(saveScript).toContain("redis.call('SET', KEYS[1], ARGV[2])");
   });
   it('reports missing configuration, unsupported methods, non-JSON requests and database failures', async () => {
     vi.stubEnv('UPSTASH_REDIS_REST_URL', ''); vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '');
-    const unconfigured = response(); await handler({ method: 'GET', headers: {} }, unconfigured); expect(unconfigured.code).toBe(503);
+    const unconfigured = response(); await handler({ method: 'GET', headers: authorizedHeaders() }, unconfigured); expect(unconfigured.code).toBe(503);
     mockRedis();
-    const invalidMethod = response(); await handler({ method: 'DELETE', headers: {} }, invalidMethod); expect(invalidMethod.code).toBe(405);
-    const invalidType = response(); await handler({ method: 'PUT', headers: { 'content-type': 'text/plain' } }, invalidType); expect(invalidType.code).toBe(415);
+    const invalidMethod = response(); await handler({ method: 'DELETE', headers: authorizedHeaders() }, invalidMethod); expect(invalidMethod.code).toBe(405);
+    const invalidType = response(); await handler({ method: 'PUT', headers: authorizedHeaders({ 'content-type': 'text/plain' }) }, invalidType); expect(invalidType.code).toBe(415);
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('private credential error'); }));
-    const failure = response(); await handler({ method: 'GET', headers: {} }, failure); expect(failure.code).toBe(503);
+    const failure = response(); await handler({ method: 'GET', headers: authorizedHeaders() }, failure); expect(failure.code).toBe(503);
     expect(JSON.stringify(failure.body)).not.toContain('private credential');
   });
 });

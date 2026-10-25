@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { seedDocument } from '../src/app/core/seed';
 import { RoadmapDocument } from '../src/app/core/model';
 
@@ -9,6 +9,7 @@ test('two independent visitors see the same saved roadmap and live updates', asy
     for (const context of [first, second]) {
       await context.route('https://shared-roadmap.test/**', async route => {
         const incoming = route.request(), url = new URL(incoming.url());
+        if (url.pathname === '/api/login') { await route.fulfill({ json: { authenticated: true } }); return; }
         if (url.pathname === '/api/roadmap') {
           if (incoming.method() === 'GET') { await route.fulfill({ json: { document: shared } }); return; }
           const body = incoming.postDataJSON();

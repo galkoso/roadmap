@@ -1,4 +1,4 @@
-import { expect, Page, test } from '@playwright/test';
+import { expect, Page, test } from './fixtures';
 import { initialPreferences, seedDocument } from '../src/app/core/seed';
 import { palette, RoadmapDocument } from '../src/app/core/model';
 

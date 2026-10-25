@@ -2,8 +2,22 @@
 
 Production website: <https://roadmap-ruby-eta.vercel.app>.
 
-The hosted app uses one shared roadmap. Everyone with the link can read, edit,
-delete, or import a replacement. No account is required. Each browser keeps its
+## Automatic updates from GitHub
+
+Vercel is connected to `galkoso/roadmap`, with `main` as the production branch.
+Commit your changes and push them to GitHub (`git push origin main`, or use
+**Commit & Push**). Each push to `main` starts a build and updates the production
+website after a successful build. Commits on your computer do not deploy until
+you push them. Build failures keep the last successful website available.
+
+`vercel.json` explicitly enables Git deployments. Other branches create preview
+deployments; their shared database requires separate Preview environment settings.
+Deployment status is available at <https://vercel.com/galkoso/roadmap>.
+
+The hosted app uses one shared roadmap. Visitors sign in with the shared password before they can read, edit, delete,
+or import a replacement. No username or account is required. Login sessions last
+seven days and use a signed HttpOnly cookie; the data API rejects unauthenticated
+requests. Use the navigation bar’s logout button to clear the browser session. Each browser keeps its
 own zoom, filters, and collapsed groups. Other visitors see saved changes within
 about 10 seconds while no editor is open. Concurrent saves use a revision check:
 a stale save is rejected and its unsaved changes remain available for export.
@@ -20,10 +34,12 @@ This is shared editing with conflict detection, not simultaneous text merging.
    | --- | --- |
    | `UPSTASH_REDIS_REST_URL` | Database REST URL from the Upstash console |
    | `UPSTASH_REDIS_REST_TOKEN` | Database REST token with read/write access |
+   | `ROADMAP_SESSION_SECRET` | Recommended: a long random secret used to sign login cookies. If omitted, the existing Redis REST token signs sessions. Changing the signing secret invalidates existing sessions. |
    | `ROADMAP_STORAGE_KEY` | Optional; defaults to `roadmap:shared:v1` |
 
    Keep the token in Vercel settings. It must not appear in source files or
-   browser configuration. The browser talks to `/api/roadmap`; only the server
+   browser configuration. The password is verified by `/api/login` on the server; the browser bundle does
+   not contain the password or its hash. The browser talks to `/api/roadmap`; only the server
    contacts Redis.
 4. Set these for **Production**. For **Preview**, use a separate database or a
    distinct `ROADMAP_STORAGE_KEY`, such as `roadmap:preview:v1`, so test deployments
@@ -49,7 +65,9 @@ visitor's old local data overwrite the shared plan.
    roadmap for everyone. Keep your exported JSON as a backup.
 
 An empty shared database starts with the app's sample roadmap. Local development
-(`pnpm start` / `pnpm preview` on localhost) retains the original IndexedDB storage.
+(`pnpm start` / `pnpm preview` on localhost) retains the original IndexedDB storage
+and uses the same password-only login. The development command starts a local
+authentication endpoint automatically. Restarting the local server clears local sessions.
 To run the actual API locally, use Vercel's local environment with database variables;
 the browser's shared-storage path is selected on a non-local hostname.
 
@@ -66,7 +84,7 @@ the browser's shared-storage path is selected on a non-local hostname.
   and reapply your changes. The app does not merge conflicting documents.
 - API writes are limited to about 3.5 MB. Large imported files may need reducing.
 - Browser data is not used as a substitute if a shared save fails. Keep regular
-  exported backups; all users of this public editor can replace or delete data.
+  exported backups; all users with the shared password can replace or delete data.
 - Polling generates database requests while visitors have the page open. Check
   your database plan's current request limits and pricing before wide usage.
 

@@ -1,4 +1,4 @@
-import { expect, Page, test } from '@playwright/test';
+import { expect, Page, test } from './fixtures';
 import { clone, palette, RoadmapDocument, SCHEMA_VERSION } from '../src/app/core/model';
 import { initialPreferences, seedDocument } from '../src/app/core/seed';
 import { currentPlanningPeriod } from '../src/app/core/planning';
