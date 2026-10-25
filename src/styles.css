@@ -143,10 +143,10 @@
 .velocity-grid .weekend{background:#1b2a3d;color:#8d9eb4;opacity:1;cursor:default}.velocity-grid button:not(:disabled):hover{filter:brightness(1.18);border-color:currentColor}
 .velocity-page button:focus-visible,.velocity-page a:focus-visible{outline:3px solid #a8c5ff;outline-offset:3px}
 .velocity-person-summary{text-align:start;color:#a5b6cc;font-size:15px;margin:20px 0 0;line-height:1.8}
-.velocity-footer{border-top:1px solid #2b3c51;padding:16px 30px;color:#a5b6cc;font-size:13px;line-height:1.7}.velocity-footer p{margin:3px 0}.velocity-footer>div{display:flex;align-items:center;gap:8px;margin-top:10px}.velocity-footer>div span{margin-inline-end:auto}
-.velocity-migration{padding:12px 30px;color:#a5b6cc;border-top:1px solid #2b3c51;line-height:1.7;font-size:12px}.planning-number-controls a{font-size:12px;color:#a8c5ff}.planning-number-controls{gap:12px}
+
+.planning-number-controls a{font-size:12px;color:#a8c5ff}.planning-number-controls{gap:12px}
 @media(max-width:850px){.velocity-layout{grid-template-columns:190px minmax(0,1fr)}.velocity-calendar{padding:22px 18px}.velocity-controls{gap:15px}.velocity-team-total{width:100%}}
-@media(max-width:650px){.velocity-heading{padding:20px 16px;align-items:flex-start}.velocity-heading h1{font-size:28px}.velocity-heading p{font-size:13px;line-height:1.6}.velocity-heading a{font-size:12px;padding:10px}.velocity-controls{padding:16px;gap:12px}.velocity-controls label{flex:1;min-width:85px;display:block;font-size:13px}.velocity-controls select,.velocity-controls input,.velocity-controls label:first-child select{width:100%;margin-top:6px}.velocity-team-total{font-size:13px;line-height:1.7}.velocity-layout{display:flex;flex-direction:column}.velocity-roster{padding:16px;border-left:0;border-bottom:1px solid #2b3c51;display:flex;flex-wrap:wrap;gap:8px}.velocity-roster h2{width:100%;margin:0 0 5px}.velocity-roster button{width:auto;flex:1 1 135px;margin:0;font-size:16px;padding:12px}.velocity-calendar{padding:20px 10px}.velocity-calendar-heading{padding:0 5px}.velocity-calendar h2{font-size:16px}.velocity-legend{font-size:12px}.velocity-grid{gap:4px}.velocity-grid button{min-height:65px;font-size:17px;padding:7px 1px;gap:9px;border-radius:6px}.velocity-grid button small{font-size:10px}.velocity-weekday{font-size:13px}.velocity-person-summary{font-size:12px;padding:0 5px}.velocity-footer{padding:14px 16px}.velocity-migration{padding:12px 16px}.page-navigation{gap:0;flex-wrap:wrap}.page-navigation a{padding:10px 12px}}
+@media(max-width:650px){.velocity-heading{padding:20px 16px;align-items:flex-start}.velocity-heading h1{font-size:28px}.velocity-heading p{font-size:13px;line-height:1.6}.velocity-heading a{font-size:12px;padding:10px}.velocity-controls{padding:16px;gap:12px}.velocity-controls label{flex:1;min-width:85px;display:block;font-size:13px}.velocity-controls select,.velocity-controls input,.velocity-controls label:first-child select{width:100%;margin-top:6px}.velocity-team-total{font-size:13px;line-height:1.7}.velocity-layout{display:flex;flex-direction:column}.velocity-roster{padding:16px;border-left:0;border-bottom:1px solid #2b3c51;display:flex;flex-wrap:wrap;gap:8px}.velocity-roster h2{width:100%;margin:0 0 5px}.velocity-roster button{width:auto;flex:1 1 135px;margin:0;font-size:16px;padding:12px}.velocity-calendar{padding:20px 10px}.velocity-calendar-heading{padding:0 5px}.velocity-calendar h2{font-size:16px}.velocity-legend{font-size:12px}.velocity-grid{gap:4px}.velocity-grid button{min-height:65px;font-size:17px;padding:7px 1px;gap:9px;border-radius:6px}.velocity-grid button small{font-size:10px}.velocity-weekday{font-size:13px}.velocity-person-summary{font-size:12px;padding:0 5px}.page-navigation{gap:0;flex-wrap:wrap}.page-navigation a{padding:10px 12px}}
 .bar.unresolved-schedule{outline:2px dashed #ffc3a0;outline-offset:2px}
 
 /* Touch attendance previews are committed as one undoable change on release. */
@@ -185,12 +185,70 @@
   .velocity-roster button{min-width:0}.velocity-roster button span{overflow-wrap:anywhere}.velocity-roster button small{flex-shrink:0}
   .velocity-calendar-heading h2{line-height:1.6;overflow-wrap:anywhere}
   .velocity-grid button{min-width:0;min-height:64px;gap:6px}.velocity-grid button small{white-space:normal;font-size:10px;line-height:1.25}
-  .velocity-footer>div{flex-wrap:wrap}.velocity-footer>div span{white-space:normal;overflow-wrap:anywhere}
+
   input,select,textarea{font-size:16px}.planning-task-allocation input,.planning-task-allocation select,.backlog-task-assignment select,.backlog-task-assignment .assignee-field select{font-size:16px;min-height:44px}
-  .toolbar button,.planning-teams button,.planning-task-actions button,.form-actions button,.dialog-actions button,.velocity-footer button,.backlog-task-actions button,.backlog-drag-handle{min-height:44px}
+  .toolbar button,.planning-teams button,.planning-task-actions button,.form-actions button,.dialog-actions button,.backlog-task-actions button,.backlog-drag-handle{min-height:44px}
 }
 @media(max-width:360px){
   .app-shell{padding-inline:8px}.velocity-controls{gap:8px;padding:12px}.velocity-controls label{min-width:70px}
   .create-work-dialog .field-grid,.field-grid{grid-template-columns:minmax(0,1fr)}
   .planning-period label{flex:1;min-width:0}.planning-metric{padding:12px}
+}
+
+.navigation-actions{display:flex;align-items:center;gap:12px;margin-inline-start:auto}
+.page-navigation{align-items:center}
+.website-period{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.website-period label{display:flex;align-items:center;gap:6px;margin:0;font-size:13px}
+.website-period input,.website-period select{width:105px;margin:0;padding:8px;min-height:40px}
+.website-period input{width:85px}
+.website-period .field-error{width:100%;margin:0}
+.page-navigation .navigation-actions .logout-button{margin:0;flex-shrink:0}
+@media(max-width:1000px){.page-navigation{flex-wrap:wrap}.navigation-actions{flex-wrap:wrap;justify-content:flex-end}}
+@media(max-width:650px){.navigation-actions{grid-column:1/-1;width:100%;gap:10px;flex-wrap:nowrap;justify-content:space-between;margin-top:6px}.website-period{gap:10px}.website-period label{font-size:12px;gap:5px}.website-period input,.website-period select{font-size:16px;min-height:44px}.website-period select{width:100px}.website-period input{width:78px}}
+
+/* Keep the attendance month visible with a compact page header and calendar. */
+.velocity-heading{padding:10px 18px;gap:12px}
+.velocity-heading>div{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.velocity-heading h1{font-size:23px;margin:0}
+.velocity-heading p{font-size:12px;line-height:1.4}
+.velocity-heading a{padding:7px 12px;font-size:12px}
+.velocity-controls{padding:8px 18px;gap:12px}
+.velocity-controls label{font-size:13px;gap:8px}
+.velocity-controls select,.velocity-controls label:first-child select{padding:7px 10px;width:140px;margin:0}
+.velocity-team-total{width:auto;font-size:13px;line-height:1.4}
+.velocity-roster{padding:14px 12px}
+.velocity-roster h2{margin-bottom:10px;font-size:13px}
+.velocity-roster button{padding:10px;margin-bottom:6px;font-size:15px}
+.velocity-calendar{padding:12px 18px}
+.velocity-calendar-heading{margin-bottom:6px;gap:8px}
+.velocity-calendar h2{font-size:16px;line-height:1.4}
+.velocity-legend{font-size:12px;gap:12px}
+.velocity-page .attendance-help{font-size:12px;line-height:1.4;margin:6px 0 8px}
+.velocity-grid{gap:5px}
+.velocity-weekday{font-size:12px;padding:3px 0}
+.velocity-grid button{min-height:44px;height:clamp(44px,7.5dvh,64px);padding:4px 2px;gap:3px;font-size:18px}
+.velocity-grid button small{font-size:11px;line-height:1.2}
+.velocity-person-summary{font-size:12px;line-height:1.4;margin:8px 0 0}
+@media(max-width:650px){
+  .velocity-heading{padding:8px 12px;flex-wrap:nowrap;align-items:center}
+  .velocity-heading>div{flex:1;gap:4px}
+  .velocity-heading h1{font-size:20px}
+  .velocity-heading p{display:none}
+  .velocity-heading a{font-size:11px;padding:7px 9px}
+  .velocity-controls{padding:7px 12px;gap:6px 12px}
+  .velocity-controls label{display:flex;flex:0 1 auto;min-width:0}
+  .velocity-controls select,.velocity-controls label:first-child select{width:130px;min-height:36px;font-size:14px}
+  .velocity-team-total{font-size:11px}
+  .velocity-roster{padding:8px 10px;flex-wrap:nowrap;overflow-x:auto;gap:6px;align-items:center}
+  .velocity-roster h2{width:auto;flex-shrink:0;margin:0;font-size:12px}
+  .velocity-roster button{flex:0 0 auto;width:auto;max-width:230px;min-height:40px;margin:0;padding:7px 9px;font-size:13px;gap:8px}
+  .velocity-roster button small{font-size:11px}
+  .velocity-calendar{padding:10px 8px}
+  .velocity-calendar-heading{padding:0;gap:5px}
+  .velocity-calendar h2{font-size:14px}
+  .velocity-legend{font-size:11px;gap:8px}
+  .velocity-grid{gap:4px}
+  .velocity-grid button{height:clamp(44px,6.5dvh,54px);font-size:16px}
+  .velocity-grid button small{font-size:10px}
+  .velocity-person-summary{padding:0;font-size:11px}
 }

@@ -1,10 +1,8 @@
-<section class="velocity-page" dir="rtl">
-  <header class="velocity-heading"><div><h1>Velocity</h1><p>נוכחות וזמינות צוותית · מקור אחד לתכנון ולשיבוץ</p></div><a routerLink="/planning">תכנון חודשי</a></header>
+<section class="velocity-page" dir="rtl" [attr.data-save-status]="store.saveStatus()">
+  <header class="velocity-heading"><div><h1>Velocity</h1><p>נוכחות וזמינות צוותית · מקור אחד לתכנון ולשיבוץ</p></div></header>
   @if (store.loaded()) {
     <div class="velocity-controls">
       <label>צוות<select aria-label="צוות" [ngModel]="team().id" (ngModelChange)="selectTeam($event)">@for (team of teams(); track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
-      <label>חודש<select aria-label="חודש" [ngModel]="period().slice(5)" (ngModelChange)="selectPeriod($event, period().slice(0,4))">@for (month of months; track $index) { <option [value]="($index + 1).toString().padStart(2, '0')">{{ month }}</option> }</select></label>
-      <label>שנה<input aria-label="שנה" type="number" min="1900" max="9999" step="1" [ngModel]="+period().slice(0,4)" (ngModelChange)="selectPeriod(period().slice(5), $event.toString())"></label>
       <p class="velocity-team-total" aria-live="polite">{{ monthTitle(period() + '-01') }} · <strong>{{ total() }}</strong> ימי אדם זמינים לצוות</p>
     </div>
     @if (error()) { <p class="field-error" role="alert">{{ error() }}</p> }
@@ -29,7 +27,5 @@
         } @else { <p class="backlog-empty">בחרו צוות עם אנשי צוות כדי לערוך נוכחות.</p> }
       </div>
     </div>
-    <footer class="velocity-footer"><p>ברירת מחדל: נמצא בימים ראשון–חמישי; שישי ושבת אינם ימי עבודה. לחיצה על תאריך משנה נוכחות.</p><div><span role="status">{{ store.saveStatus() }}</span><button (click)="store.undo()" [disabled]="!store.undoStack().length || store.importing()">ביטול</button><button (click)="store.redo()" [disabled]="!store.redoStack().length || store.importing()">ביצוע חוזר</button></div><p role="status">{{ store.notice() }}</p></footer>
-    @if (store.document().calendarMigrationNote) { <details class="velocity-migration"><summary>מעבר מזמינות ידנית ללוח נוכחות</summary><p>{{ store.document().calendarMigrationNote }}</p></details> }
   } @else { <p class="loading" role="status">טוען זמינות…</p> }
 </section>

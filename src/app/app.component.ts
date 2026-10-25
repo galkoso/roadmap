@@ -1,14 +1,26 @@
-import { ChangeDetectionStrategy, Component, HostListener, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, HostListener, inject, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { RoadmapStore } from './core/store';
 import { exportBackup } from './core/validation';
 import { today } from './core/dates';
+import { currentPlanningPeriod, emptyPlanningPreferences, validPlanningPeriod } from './core/planning';
 @Component({
-  selector: 'app-roadmap-shell', standalone: true, imports: [RouterLink, RouterLinkActive, RouterOutlet], changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'app-roadmap-shell', standalone: true, imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="app-shell" dir="rtl">
-      <nav class="page-navigation" aria-label="ניווט ראשי"><a routerLink="/roadmap" routerLinkActive="current-page" ariaCurrentWhenActive="page">Roadmap</a><a routerLink="/backlog" routerLinkActive="current-page" ariaCurrentWhenActive="page">בקלוג</a><a routerLink="/planning" routerLinkActive="current-page" ariaCurrentWhenActive="page">תכנון חודשי</a><a routerLink="/velocity" routerLinkActive="current-page" ariaCurrentWhenActive="page">Velocity</a><button class="logout-button" (click)="logout.emit()">יציאה</button></nav>
+      <nav class="page-navigation" aria-label="ניווט ראשי"><a routerLink="/roadmap" routerLinkActive="current-page" ariaCurrentWhenActive="page">Roadmap</a><a routerLink="/backlog" routerLinkActive="current-page" ariaCurrentWhenActive="page">בקלוג</a><a routerLink="/planning" routerLinkActive="current-page" ariaCurrentWhenActive="page">תכנון חודשי</a><a routerLink="/velocity" routerLinkActive="current-page" ariaCurrentWhenActive="page">Velocity</a>
+        <div class="navigation-actions">
+          <div class="website-period" role="group" aria-label="תקופת האתר">
+            <label>חודש<select aria-label="חודש" [ngModel]="period().slice(5)" (ngModelChange)="selectPeriod(period().slice(0, 4) + '-' + $event)" [disabled]="!store.loaded()">
+              @for (month of months; track $index) { <option [value]="($index + 1).toString().padStart(2, '0')">{{ month }}</option> }
+            </select></label>
+            <label>שנה<input aria-label="שנה" type="number" min="1900" max="9999" step="1" dir="ltr" [value]="+period().slice(0, 4)" (change)="changeYear($event)" [disabled]="!store.loaded()"></label>
+            @if (periodError()) { <p class="field-error" role="alert">{{ periodError() }}</p> }
+          </div>
+          <button class="logout-button" (click)="logout.emit()">יציאה</button>
+        </div>
+      </nav>
       @if (store.error()) { <div class="error-banner" role="alert"><span>{{ store.error() }}</span><button (click)="download()">{{ store.rawRecovery() ? 'ייצוא הנתונים המקוריים לבדיקה' : 'ייצוא המצב הנוכחי' }}</button>@if (store.conflict()) { <button (click)="store.reload()">טעינת הגרסה החדשה</button> } @else { <button (click)="store.retry()">ניסיון שמירה נוסף</button> }</div> }
       <router-outlet/>
     </main>
@@ -17,6 +29,19 @@ import { today } from './core/dates';
 export class RoadmapShellComponent {
   readonly logout = output<void>();
   readonly store = inject(RoadmapStore);
+  readonly period = computed(() => this.store.preferences().planning?.activePeriod ?? currentPlanningPeriod());
+  readonly periodError = signal('');
+  readonly months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+  selectPeriod(activePeriod: string): void {
+    if (!validPlanningPeriod(activePeriod)) { this.periodError.set('יש להזין שנה שלמה בין 1900 ל־9999'); return; }
+    this.periodError.set('');
+    this.store.setPreferences({ planning: { ...(this.store.preferences().planning ?? emptyPlanningPreferences()), activePeriod } });
+  }
+  changeYear(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.selectPeriod(`${Number(input.value)}-${this.period().slice(5)}`);
+    input.value = String(Number(this.period().slice(0, 4)));
+  }
   download(): void {
     const recovery = this.store.rawRecovery(), contents = recovery ? JSON.stringify(recovery, null, 2) : exportBackup(this.store.document(), this.store.preferences());
     const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' })), link = document.createElement('a');

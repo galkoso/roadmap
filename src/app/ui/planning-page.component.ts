@@ -9,7 +9,7 @@ import { isScheduled, PlanningCandidateSource, PlanningPane, PlanningPreferences
 import { memberLabel, membersForTeam } from '../core/members';
 import {
   assignPlanningTask, capacitySummary, currentPlanningPeriod, effortTotal, emptyPlanningPreferences, memberCapacitySummary, monthlyPlan,
-  movePlanningTask, planningGroups, planningTasks, selectPlanningTask, taskEffort, validPlanningPeriod
+  movePlanningTask, planningGroups, planningTasks, selectPlanningTask, taskEffort
 } from '../core/planning';
 
 @Component({
@@ -22,9 +22,6 @@ export class PlanningPageComponent {
   readonly preferences = computed(() => this.store.preferences().planning ?? emptyPlanningPreferences());
   readonly period = computed(() => this.preferences().activePeriod ?? currentPlanningPeriod());
   readonly plan = computed(() => monthlyPlan(this.store.document(), this.period()));
-  readonly year = computed(() => Number(this.period().slice(0, 4)));
-  readonly months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר']
-    .map((name, index) => ({ name, value: String(index + 1).padStart(2, '0') }));
   readonly teams = computed(() => [...this.store.document().teams].sort((a, b) => a.order - b.order));
   readonly team = computed(() => this.teams().find(team => team.id === this.preferences().activeTeamId) ?? this.teams()[0]);
   readonly summary = computed(() => capacitySummary(this.store.document(), this.team().id, this.period()));
@@ -48,17 +45,6 @@ export class PlanningPageComponent {
   }
   setCandidateSource(candidateSource: PlanningCandidateSource): void { this.setPreferences({ candidateSource }); }
   taskTeamName(task: Task): string { return this.store.document().teams.find(team => team.id === task.teamId)?.name ?? 'ללא צוות'; }
-  selectMonth(month: string): void { this.selectPeriod(`${this.year()}-${month}`); }
-  changeYear(event: Event): void {
-    const input = event.target as HTMLInputElement, year = Number(input.value);
-    const period = `${year}-${this.period().slice(5)}`;
-    if (!validPlanningPeriod(period)) { input.value = String(this.year()); this.error.set('יש להזין שנה שלמה בין 1900 ל־9999'); return; }
-    this.selectPeriod(period);
-  }
-  private selectPeriod(activePeriod: string): void {
-    if (!validPlanningPeriod(activePeriod)) return;
-    this.error.set(''); this.setPreferences({ activePeriod });
-  }
   personSummary(id: string) { return memberCapacitySummary(this.store.document(), this.team().id, id, this.period()); }
   assign(task: Task, memberId: string | null): void {
     if (this.store.importing()) return;

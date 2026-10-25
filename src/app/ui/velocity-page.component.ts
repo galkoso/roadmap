@@ -1,16 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { isAvailable, monthDates, personCapacity, teamCapacity } from '../core/availability';
 import { epoch, formatDate, isWorkingDay, monthLabel } from '../core/dates';
 import { membersForTeam } from '../core/members';
 import { TeamMember } from '../core/model';
-import { currentPlanningPeriod, emptyPlanningPreferences, validPlanningPeriod } from '../core/planning';
+import { currentPlanningPeriod, emptyPlanningPreferences } from '../core/planning';
 import { changeAttendance } from '../core/scheduler';
 import { RoadmapStore } from '../core/store';
 
 @Component({
-  selector: 'app-velocity', standalone: true, imports: [FormsModule, RouterLink], changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'app-velocity', standalone: true, imports: [FormsModule], changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './velocity-page.component.html'
 })
 export class VelocityPageComponent {
@@ -26,7 +25,6 @@ export class VelocityPageComponent {
   readonly dates = computed(() => monthDates(this.period()));
   readonly padding = computed(() => Array.from({ length: new Date(epoch(this.dates()[0]) * 86400000).getUTCDay() }, (_, i) => i));
   readonly weekdays = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
-  readonly months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
   readonly error = signal(''); readonly working = isWorkingDay; readonly monthTitle = monthLabel;
   readonly paintedDates = signal<Set<string>>(new Set());
   private stroke: { pointer: number; memberId: string; period: string; present: boolean } | null = null;
@@ -65,11 +63,6 @@ export class VelocityPageComponent {
   label(date: string): string { return `${this.member()?.name}, ${formatDate(date)}, ${!this.working(date) ? 'סוף שבוע' : this.present(date) ? 'נמצא, לחיצה לסימון היעדרות' : 'לא נמצא, לחיצה לסימון נוכחות'}`; }
   selectTeam(activeTeamId: string): void {
     this.store.setPreferences({ planning: { ...this.preferences(), activeTeamId }, velocityMemberId: null });
-  }
-  selectPeriod(month: string, year: string): void {
-    const activePeriod = `${year}-${month}`;
-    if (!validPlanningPeriod(activePeriod)) { this.error.set('יש לבחור חודש ושנה שלמה בין 1900 ל־9999'); return; }
-    this.error.set(''); this.store.setPreferences({ planning: { ...this.preferences(), activePeriod } });
   }
   selectMember(velocityMemberId: string): void { this.store.setPreferences({ velocityMemberId }); }
   toggle(date: string): void {

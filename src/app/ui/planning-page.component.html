@@ -1,12 +1,9 @@
 <section class="planning-page" dir="rtl" [attr.data-shared-draft]="dirty() ? '' : null">
   <header class="app-heading"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><h1>תכנון חודשי</h1><p>זמינות אנשים ובחירת משימות לפי חודש</p></div><span class="save-state" role="status" [class.failed]="!!store.error()"><i></i>{{ store.saveStatus() }}</span></header>
   @if (store.loaded()) {
-    <div class="planning-period" aria-label="תקופת תכנון"><label>חודש<select aria-label="חודש תכנון" [ngModel]="period().slice(5)" (ngModelChange)="selectMonth($event)">@for (month of months; track month.value) { <option [value]="month.value">{{ month.name }}</option> }</select></label><label>שנה<input aria-label="שנת תכנון" type="number" min="1900" max="9999" step="1" dir="ltr" [value]="year()" (change)="changeYear($event)"></label></div>
     <nav class="planning-teams" aria-label="בחירת צוות לתכנון">@for (item of teams(); track item.id) { <button [class.active]="team().id === item.id" [attr.aria-pressed]="team().id === item.id" (click)="selectTeam(item.id)">{{ item.name }}</button> }</nav>
     @if (error()) { <p class="field-error" role="alert">{{ error() }}</p> }
-    @if (store.document().calendarMigrationNote) { <details class="field-hint"><summary>מעבר לזמינות לפי נוכחות</summary><p>{{ store.document().calendarMigrationNote }}</p></details> }
     @let budget = summary();
-    <a routerLink="/velocity">עריכת זמינות ב־Velocity</a>
     <section class="planning-capacity" aria-label="קיבולת הצוות">
       <div class="planning-metric"><span>ימי אדם זמינים</span><strong data-testid="planning-available">{{ budget.available }} <small>ימי עבודה</small></strong><small>סכום ימי האדם לחודש הנבחר · ברירת מחדל: ראשון–חמישי</small>@if (budget.missingAvailability) { <small class="planning-warning">ל־{{ budget.missingAvailability }} אנשים טרם הוזנה זמינות · סכום ידוע בלבד</small> }</div>
       <div class="planning-metric"><span>היקף בחירת המשימות לחודש</span><strong data-testid="planning-effort">{{ budget.known }} <small>ימי עבודה</small></strong>@if (budget.missing) { <small class="planning-warning">{{ budget.missing }} משימות עם חסר היקף · סכום ידוע בלבד</small> }@if (budget.unassignedTasks) { <small>{{ budget.unassignedTasks }} משימות ללא אחראי מצוות התכנון</small> }</div>

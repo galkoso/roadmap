@@ -60,7 +60,7 @@ test('touch painting sets a consistent status, skips weekends, saves on release 
   await touch('touchEnd');
   for (const date of ['11', '12', '13']) await expect(page.locator(`[data-date="2026-10-${date}"]`)).toHaveClass(/absent/);
   await expect(page.locator('[data-date="2026-10-16"]')).toBeDisabled();
-  await page.getByRole('button', { name: 'ביטול', exact: true }).click();
+  await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('[data-date="2026-10-11"]')).toHaveClass(/present/);
   await expect(page.locator('[data-date="2026-10-12"]')).toHaveClass(/absent/);
   await expect(page.locator('[data-date="2026-10-13"]')).toHaveClass(/present/);
@@ -71,7 +71,7 @@ test('touch painting sets a consistent status, skips weekends, saves on release 
   await touch('touchStart', '2026-10-14'); await touch('touchCancel');
   await expect(page.locator('[data-date="2026-10-14"]')).toHaveClass(/present/);
   await expect(grid.locator('.paint-preview')).toHaveCount(0);
-  await expect(page.locator('.velocity-footer')).toContainText('נשמר');
+  await expect(page.locator('.velocity-page')).toHaveAttribute('data-save-status', 'נשמר');
   await page.reload();
   await expect(page.locator('[data-date="2026-10-12"]')).toHaveClass(/present/);
   await page.locator('[data-date="2026-10-14"]').focus(); await page.keyboard.press('Enter');

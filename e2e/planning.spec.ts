@@ -20,8 +20,8 @@ async function replace(page: Page, value: any) {
 const pane = (page: Page, key: string) => page.locator(`[data-pane="${key}"]`);
 const row = (page: Page, key: string, id: string) => pane(page, key).locator(`[data-task="${id}"]`);
 async function period(page: Page, value: string) {
-  await page.getByLabel('שנת תכנון', { exact: true }).fill(value.slice(0, 4)); await page.getByLabel('שנת תכנון', { exact: true }).press('Tab');
-  await page.getByLabel('חודש תכנון', { exact: true }).selectOption(value.slice(5));
+  await page.getByLabel('שנה', { exact: true }).fill(value.slice(0, 4)); await page.getByLabel('שנה', { exact: true }).press('Tab');
+  await page.getByLabel('חודש', { exact: true }).selectOption(value.slice(5));
   await expect.poll(async () => (await stored(page)).preferences.planning.activePeriod).toBe(value); await saved(page);
 }
 async function availability(page: Page, id: string, value: string) {
@@ -33,7 +33,7 @@ async function availability(page: Page, id: string, value: string) {
     const button = dates.nth(index), desired = index < Number(value);
     if ((await button.getAttribute('class'))!.includes('present') !== desired) await button.click();
   }
-  await expect(page.locator('.velocity-footer')).toContainText('נשמר');
+  await expect(page.locator('.velocity-page')).toHaveAttribute('data-save-status', 'נשמר');
   await page.getByRole('navigation', { name: 'ניווט ראשי' }).getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await saved(page);
 }
 async function add(page: Page, id: string) { await row(page, 'candidates', id).getByRole('button', { name: '＋ לתכנון', exact: true }).click(); await expect(row(page, 'selected', id)).toBeVisible(); }
@@ -62,7 +62,7 @@ test('month and year isolate tasks and people availability, persist on reload an
   await period(page, '2027-10'); await expect(pane(page, 'selected').locator('.planning-task')).toHaveCount(0); await expect(page.getByTestId('planning-available')).toContainText('42');
   await period(page, OCT); await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(row(page, 'selected', 'b')).toHaveCount(0);
   await expect(page.getByTestId('remaining-m-a')).toHaveText('5 ימי עבודה');
-  await period(page, NOV); await page.reload(); await saved(page); await expect(page.getByLabel('חודש תכנון', { exact: true })).toHaveValue('11');
+  await period(page, NOV); await page.reload(); await saved(page); await expect(page.getByLabel('חודש', { exact: true })).toHaveValue('11');
   await expect(row(page, 'selected', 'b')).toBeVisible(); await expect(page.locator('[data-member="m-a"] .planning-person-input strong')).toHaveText('4 ימים');
   await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await page.goBack(); await expect(page).toHaveURL(/\/planning$/); await expect(row(page, 'selected', 'b')).toBeVisible();
   await page.goForward(); await expect(page).toHaveURL(/\/backlog$/); await expect(page.getByTestId('backlog-row-a')).toBeVisible();
@@ -164,7 +164,7 @@ test('external member move cleans availability and planning assignments in every
 });
 
 test('invalid years are rejected and capacity is derived; failed persistence retains monthly selections for retry', async ({ page }) => {
-  const year = page.getByLabel('שנת תכנון', { exact: true }); await year.fill('0'); await year.press('Tab'); await expect(page.getByRole('alert')).toContainText('שנה'); await expect(year).toHaveValue('2026'); await page.getByLabel('חודש תכנון', { exact: true }).selectOption('11'); await period(page, OCT); await expect(page.getByRole('alert')).toHaveCount(0); await saved(page);
+  const year = page.getByLabel('שנה', { exact: true }); await year.fill('0'); await year.press('Tab'); await expect(page.getByRole('alert')).toContainText('שנה'); await expect(year).toHaveValue('2026'); await page.getByLabel('חודש', { exact: true }).selectOption('11'); await period(page, OCT); await expect(page.getByRole('alert')).toHaveCount(0); await saved(page);
   await page.evaluate(() => { (window as any).__planningPut = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = () => { throw new DOMException('quota full', 'QuotaExceededError'); }; });
   await add(page, 'a'); await expect(page.getByRole('alert')).toContainText('quota full'); await expect(page.locator('.save-state')).not.toHaveText('נשמר'); expect((await stored(page)).document.planning.plans).toEqual([]);
   await page.evaluate(() => { IDBObjectStore.prototype.put = (window as any).__planningPut; }); await page.getByRole('button', { name: 'ניסיון שמירה נוסף', exact: true }).click();

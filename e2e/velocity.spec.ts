@@ -26,11 +26,11 @@ for (const width of [1440, 390]) {
     await page.locator('[data-date="2026-10-27"]').focus(); await page.keyboard.press('Enter');
     await expect(page.locator('.velocity-team-total')).toContainText('39');
     await page.keyboard.press('ControlOrMeta+z'); await expect(page.locator('.velocity-team-total')).toContainText('40');
-    await page.getByLabel('שנה', { exact: true }).fill('2027');
+    await page.getByLabel('שנה', { exact: true }).fill('2027'); await page.getByLabel('שנה', { exact: true }).press('Tab');
     await expect(page.locator('[data-date="2027-10-26"]')).toHaveClass(/present/);
-    await page.getByLabel('שנה', { exact: true }).fill('2026');
+    await page.getByLabel('שנה', { exact: true }).fill('2026'); await page.getByLabel('שנה', { exact: true }).press('Tab');
     await expect(page.locator('[data-date="2026-10-26"]')).toHaveClass(/absent/);
-    await expect(page.locator('.velocity-footer')).toContainText('נשמר'); await page.reload();
+    await expect(page.locator('.velocity-page')).toHaveAttribute('data-save-status', 'נשמר'); await page.reload();
     await expect(page.locator('[data-date="2026-10-26"]')).toHaveClass(/absent/);
     await page.screenshot({ path: `/tmp/velocity-calendar-${width}.png`, fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -50,5 +50,45 @@ for (const width of [1440, 390]) {
     await page.getByRole('button', { name: 'משימת זמינות מתוכננת', exact: true }).click(); await expect(page.locator('.editor-panel')).toContainText('5 ימי עבודה · 12 ימים קלנדריים');
     await page.screenshot({ path: `/tmp/velocity-roadmap-${width}.png`, fullPage: true });
     expect(errors).toEqual([]);
+  });
+}
+
+for (const width of [1440, 390]) {
+  test(`website period drives planning and velocity across navigation at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 1440 ? 768 : 844 });
+    await page.goto('/roadmap'); await expect(page.locator('.save-state')).toHaveText('נשמר');
+    const document = seedDocument();
+    document.members = [{ id: 'noa', teamId: 'team-a', name: 'נועה', order: 0 }];
+    await page.evaluate(async saved => {
+      const db = await new Promise<IDBDatabase>(resolve => { const request = indexedDB.open('personal-roadmap-v1', 1); request.onsuccess = () => resolve(request.result); });
+      await new Promise<void>((resolve, reject) => { const tx = db.transaction('roadmap', 'readwrite'); tx.objectStore('roadmap').put(saved, 'current'); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); }); db.close();
+    }, { document, preferences: initialPreferences() });
+    await page.reload(); await expect(page.locator('.save-state')).toHaveText('נשמר');
+    const period = page.getByRole('group', { name: 'תקופת האתר' });
+    await period.getByLabel('שנה', { exact: true }).fill('2027');
+    await period.getByLabel('שנה', { exact: true }).press('Tab');
+    await period.getByLabel('חודש', { exact: true }).selectOption('02');
+    const navigation = page.getByRole('navigation', { name: 'ניווט ראשי' });
+    await navigation.getByRole('link', { name: 'תכנון חודשי', exact: true }).click();
+    const february = await page.getByTestId('planning-available').innerText();
+    await navigation.getByRole('link', { name: 'Velocity', exact: true }).click();
+    await expect(page.locator('[data-date="2027-02-01"]')).toBeVisible();
+    await expect(page.locator('.velocity-team-total')).toContainText(february.split(' ')[0]);
+    await period.getByLabel('חודש', { exact: true }).selectOption('03');
+    await expect(page.locator('[data-date="2027-03-31"]')).toBeVisible();
+    await expect(page.locator('[data-date="2027-02-01"]')).toHaveCount(0);
+    const march = (await page.locator('.velocity-team-total strong').innerText()).trim();
+    await navigation.getByRole('link', { name: 'תכנון חודשי', exact: true }).click();
+    await expect(page.getByTestId('planning-available')).toContainText(march);
+    await expect(page.locator('.save-state')).toHaveText('נשמר');
+    await page.reload();
+    await expect(period.getByLabel('חודש', { exact: true })).toHaveValue('03');
+    await expect(period.getByLabel('שנה', { exact: true })).toHaveValue('2027');
+    await navigation.getByRole('link', { name: 'Velocity', exact: true }).click();
+    await period.getByLabel('חודש', { exact: true }).selectOption('05');
+    await expect(page.locator('[data-date="2027-05-01"]')).toBeInViewport({ ratio: 1 });
+    await expect(page.locator('[data-date="2027-05-31"]')).toBeInViewport({ ratio: 1 });
+
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }
