@@ -28,8 +28,40 @@ export class VelocityPageComponent {
   readonly weekdays = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
   readonly months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
   readonly error = signal(''); readonly working = isWorkingDay; readonly monthTitle = monthLabel;
+  readonly paintedDates = signal<Set<string>>(new Set());
+  private stroke: { pointer: number; memberId: string; period: string; present: boolean } | null = null;
   count(id: string): number { return personCapacity(this.store.document(), id, this.period()).available; }
-  present(date: string): boolean { return isAvailable(this.store.document(), this.member()?.id, date); }
+  present(date: string): boolean {
+    return this.stroke && this.paintedDates().has(date) ? this.stroke.present : isAvailable(this.store.document(), this.member()?.id, date);
+  }
+  startPaint(event: PointerEvent): void {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-date]');
+    if (this.stroke || !event.isPrimary || event.button !== 0 || !button || button.disabled || !this.member() || !this.store.loaded()) return;
+    const date = button.dataset['date']!;
+    this.stroke = { pointer: event.pointerId, memberId: this.member()!.id, period: this.period(), present: !this.present(date) };
+    this.paintedDates.set(new Set([date]));
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+  movePaint(event: PointerEvent): void {
+    if (!this.stroke || event.pointerId !== this.stroke.pointer) return;
+    const grid = event.currentTarget as HTMLElement;
+    const button = grid.ownerDocument.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLButtonElement>('button[data-date]');
+    if (!button || !grid.contains(button) || button.disabled) return;
+    const date = button.dataset['date']!;
+    if (!this.paintedDates().has(date)) this.paintedDates.update(dates => new Set([...dates, date]));
+  }
+  finishPaint(event: PointerEvent): void {
+    if (!this.stroke || event.pointerId !== this.stroke.pointer) return;
+    this.movePaint(event);
+    const stroke = this.stroke, dates = [...this.paintedDates()];
+    this.cancelPaint();
+    if (stroke.memberId !== this.member()?.id || stroke.period !== this.period() || this.store.importing()) return;
+    this.saveAttendance(dates, stroke.present);
+  }
+  @HostListener('window:blur') cancelPaint(): void { this.stroke = null; this.paintedDates.set(new Set()); }
+  cancelPointer(event: PointerEvent): void { if (event.pointerId === this.stroke?.pointer) this.cancelPaint(); }
+
   label(date: string): string { return `${this.member()?.name}, ${formatDate(date)}, ${!this.working(date) ? 'סוף שבוע' : this.present(date) ? 'נמצא, לחיצה לסימון היעדרות' : 'לא נמצא, לחיצה לסימון נוכחות'}`; }
   selectTeam(activeTeamId: string): void {
     this.store.setPreferences({ planning: { ...this.preferences(), activeTeamId }, velocityMemberId: null });
@@ -42,10 +74,21 @@ export class VelocityPageComponent {
   selectMember(velocityMemberId: string): void { this.store.setPreferences({ velocityMemberId }); }
   toggle(date: string): void {
     if (!this.member() || !this.store.loaded() || this.store.importing()) return;
+    this.saveAttendance([date], !this.present(date));
+  }
+  private saveAttendance(dates: string[], present: boolean): void {
+    const memberId = this.member()!.id;
     try {
-      const result = changeAttendance(this.store.document(), { memberId: this.member()!.id, date, status: this.present(date) ? 'absent' : 'present' });
-      this.store.commit(result.document, result.unresolved ? 'הנוכחות עודכנה; שיבוצים מושפעים סומנו כלא מעודכנים' :
-        `הנוכחות עודכנה${result.changed.length ? ' · עודכנו: ' + result.changed.join(', ') : ''}`);
+      let document = this.store.document(), unresolved = false;
+      const changed = new Set<string>();
+      for (const date of dates) {
+        if (isAvailable(document, memberId, date) === present) continue;
+        const result = changeAttendance(document, { memberId, date, status: present ? 'present' : 'absent' });
+        document = result.document; unresolved ||= result.unresolved;
+        result.changed.forEach(name => changed.add(name));
+      }
+      if (document !== this.store.document()) this.store.commit(document, unresolved ? 'הנוכחות עודכנה; שיבוצים מושפעים סומנו כלא מעודכנים' :
+        `הנוכחות עודכנה${changed.size ? ' · עודכנו: ' + [...changed].join(', ') : ''}`);
       this.error.set('');
     } catch (error) { this.error.set((error as Error).message); }
   }

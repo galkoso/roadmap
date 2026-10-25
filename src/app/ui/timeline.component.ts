@@ -4,7 +4,7 @@ import { AssigneeFieldComponent } from './assignee-field.component';
 import { groupByPeople, personKey } from '../core/members';
 import { RoadmapStore } from '../core/store';
 import { clone, isScheduled, RoadmapDocument, ScheduledTask, Team, WorkItem } from '../core/model';
-import { addDays, daysBetween, duration, formatDate, isWorkingDay, monthLabel, nextWorkingDay, today } from '../core/dates';
+import { addDays, daysBetween, formatDate, isWorkingDay, monthLabel, today } from '../core/dates';
 import { editTask, shiftTask, shiftWork, workRange } from '../core/scheduler';
 import { statuses } from '../core/model';
 interface Row { key: string; kind: 'team' | 'work' | 'person' | 'task'; personName?: string; initial?: string; count?: number; team: Team & { unassigned?: boolean }; independent?: boolean; work?: WorkItem; task?: ScheduledTask; start?: string; end?: string; shared?: boolean }
@@ -29,13 +29,13 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
             <div class="timeline-row" [class.team-row]="row.kind === 'team'" [class.work-row]="row.kind === 'work'" [class.person-row]="row.kind === 'person'" [class.unassigned-person]="row.kind === 'person' && !row.initial" [class.assignment-highlight]="row.task?.id === highlighted()" [class.selected]="row.task?.id === selected()">
               <div class="lane" [style.width.px]="width()">
                 @if (row.start && row.end && intersects(row.start, row.end)) {
-                  <button class="bar" [class.work-bar]="row.kind === 'work'" [class.task-bar]="row.kind === 'task'"
+                  <button class="bar" [class.work-bar]="row.kind === 'work'" [class.task-bar]="row.kind === 'task'" [class.unresolved-schedule]="!!row.task?.scheduleIssue"
                     [style.left.px]="barLeft(row.start)" [style.width.px]="barWidth(row.start, row.end)"
                     [style.background]="row.task?.color ?? '#a9b4c5'" [attr.data-testid]="row.kind + '-bar-' + (row.task?.id ?? row.work?.id) + '-' + row.team.id"
                     [attr.aria-label]="barLabel(row)" [title]="barLabel(row)" (pointerdown)="begin($event, row, row.kind === 'work' ? 'work' : 'move')"
                     (click)="barClick(row)">
                     @if (row.kind === 'task') { <span class="resize-handle start" aria-hidden="true" (pointerdown)="begin($event, row, 'start')"></span> }
-                    @if (barWidth(row.start, row.end) > 150) { <span class="bar-dates">{{ shortDate(row.start) }} – {{ shortDate(row.end) }}</span> }
+                    @if (barWidth(row.start, row.end) > 150) { <span class="bar-dates">{{ row.task?.scheduleIssue ? '⚠ ' : '' }}{{ shortDate(row.start) }} – {{ shortDate(row.end) }}</span> }
                     @if (row.kind === 'task') { <span class="resize-handle end" aria-hidden="true" (pointerdown)="begin($event, row, 'end')"></span> }
                   </button>
                 }
@@ -89,7 +89,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   private drag: Drag | null = null; private suppressClick = false; private scrollTimer?: ReturnType<typeof setTimeout>; private positioning = false;
   private readonly windowCenter = signal(today());
   private readonly viewportWidth = signal(0);
-  readonly namesWidth = computed(() => this.viewportWidth() > 0 && this.viewportWidth() < 600 ? 300 : 420);
+  readonly namesWidth = computed(() => this.viewportWidth() > 0 && this.viewportWidth() < 600 ? Math.max(180, Math.min(260, Math.round(this.viewportWidth() * .58))) : 420);
   private resizeObserver?: ResizeObserver;
   private destroyed = false;
   readonly span = computed(() => Math.max(({ weeks: 42, months: 100, quarters: 366 })[this.store.preferences().mode],

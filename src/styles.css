@@ -147,3 +147,50 @@
 .velocity-migration{padding:12px 30px;color:#a5b6cc;border-top:1px solid #2b3c51;line-height:1.7;font-size:12px}.planning-number-controls a{font-size:12px;color:#a8c5ff}.planning-number-controls{gap:12px}
 @media(max-width:850px){.velocity-layout{grid-template-columns:190px minmax(0,1fr)}.velocity-calendar{padding:22px 18px}.velocity-controls{gap:15px}.velocity-team-total{width:100%}}
 @media(max-width:650px){.velocity-heading{padding:20px 16px;align-items:flex-start}.velocity-heading h1{font-size:28px}.velocity-heading p{font-size:13px;line-height:1.6}.velocity-heading a{font-size:12px;padding:10px}.velocity-controls{padding:16px;gap:12px}.velocity-controls label{flex:1;min-width:85px;display:block;font-size:13px}.velocity-controls select,.velocity-controls input,.velocity-controls label:first-child select{width:100%;margin-top:6px}.velocity-team-total{font-size:13px;line-height:1.7}.velocity-layout{display:flex;flex-direction:column}.velocity-roster{padding:16px;border-left:0;border-bottom:1px solid #2b3c51;display:flex;flex-wrap:wrap;gap:8px}.velocity-roster h2{width:100%;margin:0 0 5px}.velocity-roster button{width:auto;flex:1 1 135px;margin:0;font-size:16px;padding:12px}.velocity-calendar{padding:20px 10px}.velocity-calendar-heading{padding:0 5px}.velocity-calendar h2{font-size:16px}.velocity-legend{font-size:12px}.velocity-grid{gap:4px}.velocity-grid button{min-height:65px;font-size:17px;padding:7px 1px;gap:9px;border-radius:6px}.velocity-grid button small{font-size:10px}.velocity-weekday{font-size:13px}.velocity-person-summary{font-size:12px;padding:0 5px}.velocity-footer{padding:14px 16px}.velocity-migration{padding:12px 16px}.page-navigation{gap:0;flex-wrap:wrap}.page-navigation a{padding:10px 12px}}
+.bar.unresolved-schedule{outline:2px dashed #ffc3a0;outline-offset:2px}
+
+/* Touch attendance previews are committed as one undoable change on release. */
+.attendance-help{color:#a5b6cc;font-size:12px;line-height:1.7;margin:0 0 14px}
+.velocity-grid{touch-action:none;user-select:none;-webkit-user-select:none}
+.velocity-grid.painting{cursor:crosshair}.velocity-grid .paint-preview{box-shadow:inset 0 0 0 2px currentColor}
+
+@media(max-width:650px){
+  .app-shell{padding:12px 12px 20px;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+  .page-navigation{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:6px 0 10px;margin-bottom:20px}
+  .page-navigation a{display:flex;align-items:center;justify-content:center;min-height:44px;padding:9px 3px;font-size:12px;text-align:center}
+  .page-navigation .logout-button{grid-column:1/-1;justify-self:end;margin:0;padding:4px 12px;font-size:12px}
+  .app-heading{flex-wrap:wrap;gap:10px;margin-bottom:20px}.app-heading>div:not(.brand-mark){flex:1;min-width:0}
+  .app-heading h1{font-size:22px;line-height:1.35;overflow-wrap:anywhere}.app-heading p{line-height:1.6}
+  .brand-mark{flex-shrink:0}.local-badge{font-size:11px;padding:5px 9px}
+  .toolbar{gap:8px;align-items:center}.toolbar>.segmented{flex:1;justify-content:center}.segmented button{padding-inline:10px}
+  .toolbar .save-state{white-space:normal}.toolbar .grouping-control{flex-wrap:wrap}
+  .timeline-caption,.timeline-footer,.app-footer{flex-wrap:wrap;gap:10px;line-height:1.6}.legend{flex-wrap:wrap;gap:5px}
+  .timeline-viewport{height:58dvh;min-height:300px}.names-header{padding-inline:10px;font-size:11px;flex-wrap:wrap;align-content:center;gap:4px}
+  .row-name{padding-inline:6px}.row-name app-assignee-field{display:none}.task-name{padding-inline-start:2px;gap:5px}
+  .work-title{padding-inline-start:0;gap:4px}.shared{font-size:8px;padding:2px}.row-actions{gap:0}
+  .editor-panel{padding:16px}.task-form{grid-template-columns:minmax(0,1fr);gap:18px}.form-side{border-right:0;border-top:1px solid var(--grid);padding:16px 0 0}
+  .field-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field-grid>label{min-width:0}
+  .team-edit-row,.add-team-form{flex-wrap:wrap}.team-edit-row label,.transfer-label{min-width:0;max-width:100%}
+  .error-banner,.scheduling-notice{flex-wrap:wrap}.panel-heading{gap:10px}.panel-heading h2{overflow-wrap:anywhere}
+  .create-work-dialog{width:calc(100vw - 20px);max-height:calc(100dvh - 24px);padding:18px;overflow-x:hidden}
+  .schedule-summary{grid-template-columns:minmax(0,1fr);overflow-wrap:anywhere}.schedule-summary small{grid-column:1}
+  .backlog-list{max-height:none;overflow:visible}.backlog-list .backlog-row{padding-block:12px}
+  .backlog-task-assignment{width:100%;padding:0;gap:8px}.backlog-task-assignment>select,.backlog-task-assignment app-assignee-field{flex:1;min-width:0;width:0}
+  .backlog-task-assignment .assignee-field{display:block}.backlog-task-assignment .assignee-field select{width:100%}
+  .backlog-title-cell .backlog-title{min-width:0}.backlog-title span{min-width:0}
+  .planning-person,.planning-number-controls{gap:10px}.planning-number-controls{flex-wrap:wrap}
+  .planning-task-allocation{flex-wrap:wrap}.planning-task-allocation>app-assignee-field,.planning-task-allocation>label{flex:1 1 120px;min-width:0}
+  .planning-person-remaining,.planning-person-effort{min-width:0;overflow-wrap:anywhere}
+  .velocity-heading{flex-wrap:wrap;gap:12px}.velocity-heading>div{min-width:0;flex:1 1 180px}
+  .velocity-roster button{min-width:0}.velocity-roster button span{overflow-wrap:anywhere}.velocity-roster button small{flex-shrink:0}
+  .velocity-calendar-heading h2{line-height:1.6;overflow-wrap:anywhere}
+  .velocity-grid button{min-width:0;min-height:64px;gap:6px}.velocity-grid button small{white-space:normal;font-size:10px;line-height:1.25}
+  .velocity-footer>div{flex-wrap:wrap}.velocity-footer>div span{white-space:normal;overflow-wrap:anywhere}
+  input,select,textarea{font-size:16px}.planning-task-allocation input,.planning-task-allocation select,.backlog-task-assignment select,.backlog-task-assignment .assignee-field select{font-size:16px;min-height:44px}
+  .toolbar button,.planning-teams button,.planning-task-actions button,.form-actions button,.dialog-actions button,.velocity-footer button,.backlog-task-actions button,.backlog-drag-handle{min-height:44px}
+}
+@media(max-width:360px){
+  .app-shell{padding-inline:8px}.velocity-controls{gap:8px;padding:12px}.velocity-controls label{min-width:70px}
+  .create-work-dialog .field-grid,.field-grid{grid-template-columns:minmax(0,1fr)}
+  .planning-period label{flex:1;min-width:0}.planning-metric{padding:12px}
+}

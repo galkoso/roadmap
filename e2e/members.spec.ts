@@ -47,15 +47,15 @@ test('members, scoped assignment, keyboard collapse, immediate person projection
   expect(values.some(v => v.includes(a.id))).toBe(true); expect(values).not.toContain(c.id);
   await control.selectOption(b.id); await saved(page); await expect(destination).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.assignment-highlight')).toContainText(item.title);
-  expect((await planning(page)).document.tasks.find((t: any) => t.id === item.id)).toEqual({ ...item, assigneeId: b.id });
+  expect(legacyFields((await planning(page)).document.tasks.find((t: any) => t.id === item.id))).toEqual({ ...item, assigneeId: b.id });
   await control.selectOption({ label: 'ללא אחראי' }); await saved(page);
-  expect((await planning(page)).document.tasks.find((t: any) => t.id === item.id)).toEqual(item);
+  expect(legacyFields((await planning(page)).document.tasks.find((t: any) => t.id === item.id))).toEqual(item);
   await control.selectOption(b.id); await saved(page);
   await page.locator('.task-name').filter({ hasText: item.title }).click();
   const editor = page.getByRole('region', { name: 'עריכת משימה' });
   await editor.getByLabel('צוות אחראי').selectOption('team-a'); await expect(editor).toContainText('האחראי הוסר');
   await editor.getByRole('button', { name: 'שמירת השינויים', exact: true }).click(); await saved(page);
-  expect((await planning(page)).document.tasks.find((t: any) => t.id === item.id)).toEqual({ ...item, teamId: 'team-a', assigneeId: null });
+  expect(legacyFields((await planning(page)).document.tasks.find((t: any) => t.id === item.id))).toEqual({ ...item, teamId: 'team-a', assigneeId: null });
   await page.reload(); await saved(page); await expect(page.getByLabel('תצוגת Roadmap')).toHaveValue('people');
   await expect(page.locator('.person-title').filter({ hasText: a.id.slice(0, 8) })).toContainText('אין משימות בציר');
   await page.screenshot({ path: 'test-results/members-roadmap.png', fullPage: true });

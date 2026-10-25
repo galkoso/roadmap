@@ -1,6 +1,6 @@
 import { AttendanceException, clone, Dependency, isScheduled, RoadmapDocument, ScheduledTask, Task } from './model.js';
 import { changeTaskTeam, validateAssignment } from './members.js';
-import { addWorkingDays, duration, epoch, nextWorkingDay, workingDifference } from './dates.js';
+import { addWorkingDays, epoch, nextWorkingDay, workingDifference } from './dates.js';
 import { executionSchedule, rangeEffort, requiredEffort, validateAttendance } from './availability.js';
 export function topological(doc: RoadmapDocument): string[] {
   const indegree = new Map(doc.tasks.map(t => [t.id, 0]));

@@ -16,11 +16,13 @@
       <div class="velocity-calendar">
         @if (member(); as person) {
           <div class="velocity-calendar-heading"><h2>{{ person.name }} · {{ summary()!.available }} ימים זמינים</h2><div class="velocity-legend"><span class="present-key">● נמצא</span><span class="absent-key">● לא נמצא</span></div></div>
-          <div class="velocity-grid" aria-label="לוח נוכחות חודשי">
+          <p id="attendance-help" class="attendance-help">לחצו על יום או גררו בין ימים כדי לסמן נמצא / לא נמצא. השינוי נשמר בסיום הגרירה.</p>
+          <div class="velocity-grid" aria-label="לוח נוכחות חודשי" aria-describedby="attendance-help" [class.painting]="paintedDates().size > 0"
+            (pointerdown)="startPaint($event)" (pointermove)="movePaint($event)" (pointerup)="finishPaint($event)" (pointercancel)="cancelPointer($event)" (lostpointercapture)="cancelPointer($event)">
             @for (day of weekdays; track day) { <span class="velocity-weekday">{{ day }}</span> }
             @for (blank of padding(); track blank) { <span aria-hidden="true"></span> }
             @for (date of dates(); track date) {
-              <button [attr.data-date]="date" [class.present]="working(date) && present(date)" [class.absent]="working(date) && !present(date)" [class.weekend]="!working(date)" [disabled]="!working(date) || store.importing()" [attr.aria-pressed]="working(date) ? !present(date) : null" [attr.aria-label]="label(date)" (click)="toggle(date)"><span>{{ +date.slice(8) }}</span><small>{{ !working(date) ? 'סופ״ש' : present(date) ? '✓ נמצא' : '× לא נמצא' }}</small></button>
+              <button [attr.data-date]="date" [class.paint-preview]="paintedDates().has(date)" [class.present]="working(date) && present(date)" [class.absent]="working(date) && !present(date)" [class.weekend]="!working(date)" [disabled]="!working(date) || store.importing()" [attr.aria-pressed]="working(date) ? !present(date) : null" [attr.aria-label]="label(date)" (click)="$event.detail === 0 && toggle(date)"><span>{{ +date.slice(8) }}</span><small>{{ !working(date) ? 'סופ״ש' : present(date) ? '✓ נמצא' : '× לא נמצא' }}</small></button>
             }
           </div>
           <p class="velocity-person-summary" aria-live="polite">{{ summary()!.base }} ימי ראשון–חמישי · {{ summary()!.absent }} ימי היעדרות · {{ summary()!.available }} ימים זמינים</p>

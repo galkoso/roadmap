@@ -1,3 +1,14 @@
+# Velocity verification — 2026-10-25
+
+- Production build: `NG_BUILD_MAX_WORKERS=1 pnpm build` passed, including API TypeScript and Angular strict template compilation. Angular aborted inside the sandbox; the same build passed outside it.
+- Unit/integration suite: `pnpm test` — **110 passed**, 10 files.
+- Browser suite: all **65 scenarios passed** across the final suite and the corrected member-metadata assertion rerun (64 passed in the full run; the remaining scenario passed with `pnpm exec playwright test --last-failed`).
+- Velocity was exercised at 1440px and 390px, including keyboard attendance edits, Undo, year isolation, reload, derived planning capacity, real scheduling and a continuous 12-date Roadmap span for five working days ending 2026-11-05. Desktop and mobile screenshots were inspected.
+- Coverage includes dependency calendars and global lags, anchors, effort edits, drag/resize, bounded unresolved schedules, completed history, schema migration, archival capacity, invalid imports, JSON/IndexedDB round-trips and revision/save-failure behavior.
+- No deployment was performed. The repository has a dark theme; Velocity follows it. In-progress calculation policy and integer-effort limits are documented in README.
+
+The earlier verification record below is historical.
+
 # תוצאות אימות — 13.10.2026
 
 המערכת נבנתה ונבדקה בפועל ב־macOS ARM64, Node 22.22.3, pnpm 10.13.1, Angular 22.2.2 ו־TypeScript 6.0.3.

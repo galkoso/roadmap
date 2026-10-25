@@ -5,7 +5,7 @@ import { AssigneeFieldComponent } from './assignee-field.component';
 import { changeTaskTeam } from '../core/members';
 import { RoadmapStore } from '../core/store';
 import { clone, Dependency, isScheduled, palette, ScheduledTask, Task, uid } from '../core/model';
-import { daysBetween, duration, formatDate, nextWorkingDay, today, validateRange } from '../core/dates';
+import { daysBetween, formatDate, nextWorkingDay, today } from '../core/dates';
 import { editTask, returnToBacklog, setIncoming } from '../core/scheduler';
 @Component({
   selector: 'app-task-editor', standalone: true, imports: [FormsModule, AssigneeFieldComponent], changeDetection: ChangeDetectionStrategy.OnPush,

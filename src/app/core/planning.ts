@@ -1,7 +1,7 @@
 import { personCapacity, requiredEffort, teamCapacity } from './availability.js';
 import { clone, isScheduled, MonthlyPlan, PlanningCandidateSource, PlanningPane, PlanningPreferences, RoadmapDocument, Task } from './model.js';
 import { assignTask } from './members.js';
-import { duration, today } from './dates.js';
+import { today } from './dates.js';
 
 export const currentPlanningPeriod = (): string => today().slice(0, 7);
 export const validPlanningPeriod = (value: unknown): value is string => typeof value === 'string' && /^(19\d{2}|[2-9]\d{3})-(0[1-9]|1[0-2])$/.test(value);
@@ -24,7 +24,7 @@ export function parseCapacityDays(value: string): number {
   if (!validCapacityDays(days)) throw new Error('יש להזין מספר בין 0 ל־1,000,000, בכפולות של חצי יום');
   return days;
 }
-// The existing effort quantity is a backlog estimate or the actual inclusive working duration of a scheduled task.
+// Scheduled effort is stored independently of its calendar span; legacy tasks use the pre-attendance global estimate.
 export function taskEffort(task: Task): number | null {
   const days = isScheduled(task) ? requiredEffort(task) : task.estimatedWorkingDays;
   return typeof days === 'number' && Number.isSafeInteger(days) && days > 0 ? days : null;
