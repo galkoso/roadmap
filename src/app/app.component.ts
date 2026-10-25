@@ -8,7 +8,7 @@ import { today } from './core/dates';
   selector: 'app-roadmap-shell', standalone: true, imports: [RouterLink, RouterLinkActive, RouterOutlet], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="app-shell" dir="rtl">
-      <nav class="page-navigation" aria-label="ניווט ראשי"><a routerLink="/roadmap" routerLinkActive="current-page" ariaCurrentWhenActive="page">Roadmap</a><a routerLink="/backlog" routerLinkActive="current-page" ariaCurrentWhenActive="page">בקלוג</a><a routerLink="/planning" routerLinkActive="current-page" ariaCurrentWhenActive="page">תכנון חודשי</a><button class="logout-button" (click)="logout.emit()">יציאה</button></nav>
+      <nav class="page-navigation" aria-label="ניווט ראשי"><a routerLink="/roadmap" routerLinkActive="current-page" ariaCurrentWhenActive="page">Roadmap</a><a routerLink="/backlog" routerLinkActive="current-page" ariaCurrentWhenActive="page">בקלוג</a><a routerLink="/planning" routerLinkActive="current-page" ariaCurrentWhenActive="page">תכנון חודשי</a><a routerLink="/velocity" routerLinkActive="current-page" ariaCurrentWhenActive="page">Velocity</a><button class="logout-button" (click)="logout.emit()">יציאה</button></nav>
       @if (store.error()) { <div class="error-banner" role="alert"><span>{{ store.error() }}</span><button (click)="download()">{{ store.rawRecovery() ? 'ייצוא הנתונים המקוריים לבדיקה' : 'ייצוא המצב הנוכחי' }}</button>@if (store.conflict()) { <button (click)="store.reload()">טעינת הגרסה החדשה</button> } @else { <button (click)="store.retry()">ניסיון שמירה נוסף</button> }</div> }
       <router-outlet/>
     </main>

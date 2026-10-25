@@ -1,0 +1,33 @@
+<section class="velocity-page" dir="rtl">
+  <header class="velocity-heading"><div><h1>Velocity</h1><p>נוכחות וזמינות צוותית · מקור אחד לתכנון ולשיבוץ</p></div><a routerLink="/planning">תכנון חודשי</a></header>
+  @if (store.loaded()) {
+    <div class="velocity-controls">
+      <label>צוות<select aria-label="צוות" [ngModel]="team().id" (ngModelChange)="selectTeam($event)">@for (team of teams(); track team.id) { <option [value]="team.id">{{ team.name }}</option> }</select></label>
+      <label>חודש<select aria-label="חודש" [ngModel]="period().slice(5)" (ngModelChange)="selectPeriod($event, period().slice(0,4))">@for (month of months; track $index) { <option [value]="($index + 1).toString().padStart(2, '0')">{{ month }}</option> }</select></label>
+      <label>שנה<input aria-label="שנה" type="number" min="1900" max="9999" step="1" [ngModel]="+period().slice(0,4)" (ngModelChange)="selectPeriod(period().slice(5), $event.toString())"></label>
+      <p class="velocity-team-total" aria-live="polite">{{ monthTitle(period() + '-01') }} · <strong>{{ total() }}</strong> ימי אדם זמינים לצוות</p>
+    </div>
+    @if (error()) { <p class="field-error" role="alert">{{ error() }}</p> }
+    <div class="velocity-layout">
+      <aside class="velocity-roster" aria-label="אנשי הצוות"><h2>אנשי הצוות</h2>
+        @for (person of members(); track person.id) { <button [class.active]="member()?.id === person.id" [attr.aria-pressed]="member()?.id === person.id" (click)="selectMember(person.id)"><span>{{ person.name }}</span><small>{{ count(person.id) }} ימים</small></button> }
+        @empty { <p>אין אנשים בצוות. ניתן להוסיף אנשים דרך ״אנשי הצוותים״ ב־Roadmap.</p> }
+      </aside>
+      <div class="velocity-calendar">
+        @if (member(); as person) {
+          <div class="velocity-calendar-heading"><h2>{{ person.name }} · {{ summary()!.available }} ימים זמינים</h2><div class="velocity-legend"><span class="present-key">● נמצא</span><span class="absent-key">● לא נמצא</span></div></div>
+          <div class="velocity-grid" aria-label="לוח נוכחות חודשי">
+            @for (day of weekdays; track day) { <span class="velocity-weekday">{{ day }}</span> }
+            @for (blank of padding(); track blank) { <span aria-hidden="true"></span> }
+            @for (date of dates(); track date) {
+              <button [attr.data-date]="date" [class.present]="working(date) && present(date)" [class.absent]="working(date) && !present(date)" [class.weekend]="!working(date)" [disabled]="!working(date) || store.importing()" [attr.aria-pressed]="working(date) ? !present(date) : null" [attr.aria-label]="label(date)" (click)="toggle(date)"><span>{{ +date.slice(8) }}</span><small>{{ !working(date) ? 'סופ״ש' : present(date) ? '✓ נמצא' : '× לא נמצא' }}</small></button>
+            }
+          </div>
+          <p class="velocity-person-summary" aria-live="polite">{{ summary()!.base }} ימי ראשון–חמישי · {{ summary()!.absent }} ימי היעדרות · {{ summary()!.available }} ימים זמינים</p>
+        } @else { <p class="backlog-empty">בחרו צוות עם אנשי צוות כדי לערוך נוכחות.</p> }
+      </div>
+    </div>
+    <footer class="velocity-footer"><p>ברירת מחדל: נמצא בימים ראשון–חמישי; שישי ושבת אינם ימי עבודה. לחיצה על תאריך משנה נוכחות.</p><div><span role="status">{{ store.saveStatus() }}</span><button (click)="store.undo()" [disabled]="!store.undoStack().length || store.importing()">ביטול</button><button (click)="store.redo()" [disabled]="!store.redoStack().length || store.importing()">ביצוע חוזר</button></div><p role="status">{{ store.notice() }}</p></footer>
+    @if (store.document().calendarMigrationNote) { <details class="velocity-migration"><summary>מעבר מזמינות ידנית ללוח נוכחות</summary><p>{{ store.document().calendarMigrationNote }}</p></details> }
+  } @else { <p class="loading" role="status">טוען זמינות…</p> }
+</section>

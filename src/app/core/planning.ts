@@ -1,3 +1,4 @@
+import { personCapacity, requiredEffort, teamCapacity } from './availability.js';
 import { clone, isScheduled, MonthlyPlan, PlanningCandidateSource, PlanningPane, PlanningPreferences, RoadmapDocument, Task } from './model.js';
 import { assignTask } from './members.js';
 import { duration, today } from './dates.js';
@@ -25,7 +26,7 @@ export function parseCapacityDays(value: string): number {
 }
 // The existing effort quantity is a backlog estimate or the actual inclusive working duration of a scheduled task.
 export function taskEffort(task: Task): number | null {
-  const days = isScheduled(task) ? duration(task.startDate, task.endDate) : task.estimatedWorkingDays;
+  const days = isScheduled(task) ? requiredEffort(task) : task.estimatedWorkingDays;
   return typeof days === 'number' && Number.isSafeInteger(days) && days > 0 ? days : null;
 }
 export function effortTotal(tasks: Task[]): { known: number; missing: number } {
@@ -62,18 +63,15 @@ export function planningGroups(doc: RoadmapDocument, tasks: Task[]): { workItemI
     .concat(byWork.has(null) ? [{ workItemId: null, title: 'משימות עצמאיות', tasks: byWork.get(null)! }] : []);
 }
 export function memberCapacitySummary(doc: RoadmapDocument, teamId: string, memberId: string, period = currentPlanningPeriod()) {
-  const plan = monthlyPlan(doc, period), available = plan.teamCapacities.find(capacity => capacity.teamId === teamId)
-    ?.memberAvailability.find(member => member.memberId === memberId)?.availableWorkingDays ?? null;
+  const available = personCapacity(doc, memberId, period).available;
   const tasks = planningTasks(doc, teamId, 'selected', 'team', period).filter(task => planningMemberId(doc, task.id, period) === memberId);
   const effort = effortTotal(tasks);
   return { ...effort, available, remaining: available === null ? null : available - effort.known, tasks: tasks.length };
 }
 export function capacitySummary(doc: RoadmapDocument, teamId: string, period = currentPlanningPeriod()) {
-  const members = doc.members.filter(member => member.teamId === teamId), plan = monthlyPlan(doc, period);
-  const availability = plan.teamCapacities.find(capacity => capacity.teamId === teamId)?.memberAvailability ?? [];
-  const available = availability.reduce((sum, member) => sum + member.availableWorkingDays, 0);
+  const available = teamCapacity(doc, teamId, period);
   const effort = effortTotal(planningTasks(doc, teamId, 'selected', 'team', period));
-  const missingAvailability = members.filter(member => !availability.some(value => value.memberId === member.id)).length;
+  const missingAvailability = 0;
   const unassignedTasks = planningTasks(doc, teamId, 'selected', 'team', period).filter(task => !planningMemberId(doc, task.id, period)).length;
   return { ...effort, available, remaining: available - effort.known, missingAvailability, unassignedTasks };
 }

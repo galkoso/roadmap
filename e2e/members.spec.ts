@@ -1,3 +1,4 @@
+import { legacyFields } from '../tests/legacy-fields';
 import { expect, Page, test } from './fixtures';
 async function saved(page: Page) { await expect(page.locator('.save-state')).toHaveText('נשמר'); }
 async function planning(page: Page) {
@@ -33,11 +34,11 @@ test('members, scoped assignment, keyboard collapse, immediate person projection
   const a = await addPerson(page, 'דנה'), b = await addPerson(page, 'דנה'), c = await addPerson(page, 'אורי', 'team-a');
   const before = await planning(page), item = before.document.tasks.find((t: any) => t.id === 'implementation');
   await page.getByLabel('אחראי למשימה ' + item.title).selectOption(a.id); await saved(page);
-  expect((await planning(page)).document.tasks.find((t: any) => t.id === item.id)).toEqual({ ...item, assigneeId: a.id });
+  expect(legacyFields((await planning(page)).document.tasks.find((t: any) => t.id === item.id))).toEqual({ ...item, assigneeId: a.id });
   const viewport = page.locator('.timeline-viewport'), left = await viewport.evaluate(el => el.scrollLeft);
   await page.getByLabel('תצוגת Roadmap').selectOption('people'); await saved(page);
   expect(await viewport.evaluate(el => el.scrollLeft)).toBe(left);
-  expect((await planning(page)).document.tasks).toEqual(before.document.tasks.map((t: any) => t.id === item.id ? { ...t, assigneeId: a.id } : t));
+  expect((await planning(page)).document.tasks.map(legacyFields)).toEqual(before.document.tasks.map((t: any) => t.id === item.id ? { ...t, assigneeId: a.id } : t));
   await expect(page.locator('.person-title').filter({ hasText: a.id.slice(0, 8) })).toContainText('1 משימות');
   const destination = page.locator('.person-title').filter({ hasText: b.id.slice(0, 8) }); await destination.focus(); await page.keyboard.press('Enter');
   await expect(destination).toHaveAttribute('aria-expanded', 'false');

@@ -1,3 +1,4 @@
+import { legacyFields } from './legacy-fields';
 import 'fake-indexeddb/auto';
 import { describe, expect, it, vi } from 'vitest';
 import { IDBObjectStore } from 'fake-indexeddb';
@@ -20,10 +21,10 @@ describe('team member assignment domain', () => {
   it('assigns, reassigns and clears a task without changing any other data or input', () => {
     const original = fixture(), before = clone(original), id = 'implementation';
     let doc = assignTask(original, id, 'person-a');
-    expect(task(doc, id)).toEqual({ ...task(original, id), assigneeId: 'person-a' });
+    expect(legacyFields(task(doc, id))).toEqual({ ...task(original, id), assigneeId: 'person-a' });
     expect(doc.dependencies).toEqual(before.dependencies); expect(doc.workItems).toEqual(before.workItems);
-    doc = assignTask(doc, id, 'person-b'); expect(task(doc, id)).toEqual({ ...task(original, id), assigneeId: 'person-b' });
-    doc = assignTask(doc, id, null); expect(doc).toEqual(original); expect(original).toEqual(before);
+    doc = assignTask(doc, id, 'person-b'); expect(legacyFields(task(doc, id))).toEqual({ ...task(original, id), assigneeId: 'person-b' });
+    doc = assignTask(doc, id, null); expect({ ...doc, tasks: doc.tasks.map(legacyFields) }).toEqual(original); expect(original).toEqual(before);
   });
   it('rejects cross-team and unknown assignments independently of controls', () => {
     const doc = fixture(); expect(() => assignTask(doc, 'implementation', 'person-c')).toThrow(/צוות/);
@@ -82,7 +83,7 @@ describe('people projection and persistence', () => {
     const legacy = { ...old, schemaVersion: version, tasks: doc.tasks.map(({ assigneeId, planningState, ...rest }) => version === 1 ? rest : { ...rest, planningState }) };
     const before = clone(legacy), migrated = validateDocument(legacy);
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION); expect(migrated.members).toEqual([]);
-    expect(migrated.tasks).toEqual(doc.tasks); expect(migrated.dependencies).toEqual(doc.dependencies); expect(legacy).toEqual(before);
+    expect(migrated.tasks.map(legacyFields)).toEqual(doc.tasks.map(legacyFields)); expect(migrated.dependencies).toEqual(doc.dependencies); expect(legacy).toEqual(before);
     expect(parseBackup(JSON.stringify({ schemaVersion: version, exportedAt: new Date().toISOString(), document: legacy, preferences: initialPreferences() })).document).toEqual(migrated);
   });
   it('round-trips members, references and independent grouping preferences through JSON and IndexedDB', async () => {

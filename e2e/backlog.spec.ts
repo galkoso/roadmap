@@ -1,3 +1,4 @@
+import { legacyFields } from '../tests/legacy-fields';
 import { expect, Page, test } from './fixtures';
 import { SCHEMA_VERSION } from '../src/app/core/model';
 async function saved(page: Page) { await expect(page.locator('.save-state')).toHaveText('נשמר'); }
@@ -108,7 +109,7 @@ test('old IndexedDB documents migrate in place; invalid old data remain stored a
     await new Promise<void>(resolve => { const tx = db.transaction('roadmap', 'readwrite'); tx.objectStore('roadmap').put(value, 'current'); tx.oncomplete = () => resolve(); }); db.close();
   }, value); }
   await replace(legacy); await page.reload(); await saved(page); await expect.poll(async () => (await planning(page)).document.schemaVersion).toBe(SCHEMA_VERSION);
-  const migrated = await planning(page); expect(migrated.document.tasks.map(({ planningState, ...task }: any) => task)).toEqual(legacy.document.tasks);
+  const migrated = await planning(page); expect(migrated.document.tasks.map(legacyFields).map(({ planningState, ...task }: any) => task)).toEqual(legacy.document.tasks);
   legacy.document.tasks[0].startDate = '2026-02-30'; await replace(legacy); await page.reload(); await expect(page.getByRole('alert')).toContainText('תאריך');
   expect((await planning(page)).document).toEqual(legacy.document);
   const promise = page.waitForEvent('download'); await page.getByRole('button', { name: 'ייצוא הנתונים המקוריים לבדיקה' }).click(); const download = await promise;
@@ -146,7 +147,7 @@ test('backlog metadata survives a backup round-trip and old backup import migrat
   const old = { ...backup, schemaVersion: 1, document: { ...backup.document, schemaVersion: 1, tasks: oldTasks } };
   await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: 'old.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(old)) }); await page.getByRole('button', { name: 'אישור והחלפת התכנון' }).click();
   await expect.poll(async () => (await planning(page)).document.tasks.length).toBe(oldTasks.length); await saved(page);
-  expect((await planning(page)).document.tasks.map(({ planningState, ...task }: any) => task)).toEqual(oldTasks);
+  expect((await planning(page)).document.tasks.map(legacyFields).map(({ planningState, ...task }: any) => task)).toEqual(oldTasks);
   await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+z'); await expect.poll(async () => (await planning(page)).document.tasks.length).toBe(backup.document.tasks.length);
 });
 

@@ -1,6 +1,7 @@
-import { clone, Dependency, isScheduled, RoadmapDocument, ScheduledTask, Task } from './model.js';
+import { AttendanceException, clone, Dependency, isScheduled, RoadmapDocument, ScheduledTask, Task } from './model.js';
 import { changeTaskTeam, validateAssignment } from './members.js';
-import { addWorkingDays, duration, nextWorkingDay, validateRange, workingDifference } from './dates.js';
+import { addWorkingDays, duration, epoch, nextWorkingDay, workingDifference } from './dates.js';
+import { executionSchedule, rangeEffort, requiredEffort, validateAttendance } from './availability.js';
 export function topological(doc: RoadmapDocument): string[] {
   const indegree = new Map(doc.tasks.map(t => [t.id, 0]));
   const outgoing = new Map<string, string[]>();
@@ -36,36 +37,50 @@ export function requiredStart(doc: RoadmapDocument, taskId: string): string | un
   const blockers = unscheduledPredecessors(doc, taskId);
   if (blockers.length) throw new Error('יש לשבץ קודם את המשימות: ' + blockers.map(t => t.title).join(', ') + ', או להסיר את התלות בהן');
   const tasks = new Map(doc.tasks.filter(isScheduled).map(t => [t.id, t]));
+  if (doc.dependencies.some(link => link.successorId === taskId && tasks.get(link.predecessorId)?.scheduleIssue))
+    throw new Error('שיבוץ משימה קודמת אינו מעודכן; יש לפתור את הזמינות תחילה');
   return doc.dependencies.filter(d => d.successorId === taskId)
     .map(d => addWorkingDays(tasks.get(d.predecessorId)!.endDate, 1 + d.lagWorkingDays)).sort().at(-1);
 }
-function moveTask(task: ScheduledTask, start: string): void {
-  const length = duration(task.startDate, task.endDate); task.startDate = start; task.endDate = addWorkingDays(start, length - 1);
+function moveTask(doc: RoadmapDocument, task: ScheduledTask, start: string): void {
+  const effort = requiredEffort(task), schedule = executionSchedule(doc, task.assigneeId, start, effort);
+  task.effortWorkingDays = effort; task.startDate = schedule.startDate; task.endDate = schedule.endDate;
+  delete task.scheduleIssue;
 }
 export function propagate(doc: RoadmapDocument, roots: string[]): void {
   const reachable = new Set(roots);
   const tasks = new Map(doc.tasks.map(t => [t.id, t]));
   for (const id of topological(doc)) {
     if (!reachable.has(id) || !isScheduled(tasks.get(id)!)) continue;
-    if (!roots.includes(id)) { const start = requiredStart(doc, id); if (start) moveTask(tasks.get(id)! as ScheduledTask, start); }
+    if (!roots.includes(id)) {
+      const task = tasks.get(id)! as ScheduledTask, minimum = requiredStart(doc, id);
+      if (task.status !== 'completed' && minimum) moveTask(doc, task, [task.requestedStartDate ?? minimum, minimum].sort().at(-1)!);
+    }
     for (const d of doc.dependencies) if (d.predecessorId === id) reachable.add(d.successorId);
   }
 }
-export function editTask(document: RoadmapDocument, id: string, patch: Partial<Task>): RoadmapDocument {
+export function editTask(document: RoadmapDocument, id: string, patch: Partial<ScheduledTask>): RoadmapDocument {
   const doc = clone(document), task = doc.tasks.find(t => t.id === id);
   if (!task || !isScheduled(task)) throw new Error('המשימה אינה משובצת בציר הזמן');
-  const scheduling = (patch.startDate !== undefined && patch.startDate !== task.startDate) || (patch.endDate !== undefined && patch.endDate !== task.endDate);
+  const oldEffort = requiredEffort(task), oldAnchor = task.requestedStartDate ?? task.startDate;
+  const startChanged = patch.startDate !== undefined && patch.startDate !== task.startDate;
+  const endChanged = patch.endDate !== undefined && patch.endDate !== task.endDate;
+  const scheduling = startChanged || endChanged || patch.requestedStartDate !== undefined || patch.effortWorkingDays !== undefined ||
+    patch.assigneeId !== undefined || patch.teamId !== undefined;
   if (patch.teamId !== undefined) changeTaskTeam(doc, task, patch.teamId);
   Object.assign(task, patch, { id: task.id, planningState: 'scheduled' });
-  validateAssignment(doc, task, task.assigneeId ?? null);
-  topological(doc);
-  validateRange(task.startDate, task.endDate);
+  validateAssignment(doc, task, task.assigneeId ?? null); topological(doc);
   if (scheduling) {
-    const minimum = requiredStart(doc, id); if (minimum && task.startDate < minimum) moveTask(task, minimum);
-    // A deliberate delay is expressed as an incoming working-day lag for every predecessor.
-    for (const d of doc.dependencies.filter(d => d.successorId === id)) {
+    task.requestedStartDate = patch.requestedStartDate ?? (startChanged ? patch.startDate! : task.requestedStartDate ?? task.startDate);
+    epoch(task.requestedStartDate!);
+    // Endpoint resize preserves the selected range; a body move supplies explicit effort.
+    task.effortWorkingDays = patch.effortWorkingDays ?? (endChanged || startChanged
+      ? rangeEffort(doc, task.assigneeId, task.startDate, task.endDate) : oldEffort);
+    const minimum = requiredStart(doc, id);
+    moveTask(doc, task, [task.requestedStartDate, minimum ?? task.requestedStartDate].sort().at(-1)!);
+    if (startChanged || (patch.requestedStartDate !== undefined && patch.requestedStartDate !== oldAnchor)) for (const d of doc.dependencies.filter(d => d.successorId === id)) {
       const predecessor = doc.tasks.find(t => t.id === d.predecessorId)! as ScheduledTask;
-      d.lagWorkingDays = Math.max(0, workingDifference(addWorkingDays(predecessor.endDate, 1), task.startDate));
+      d.lagWorkingDays = Math.max(0, workingDifference(addWorkingDays(predecessor.endDate, 1), task.requestedStartDate!));
     }
     propagate(doc, [id]);
   }
@@ -74,14 +89,20 @@ export function editTask(document: RoadmapDocument, id: string, patch: Partial<T
 export function shiftTask(doc: RoadmapDocument, id: string, start: string): RoadmapDocument {
   const task = doc.tasks.find(t => t.id === id);
   if (!task || !isScheduled(task)) throw new Error('המשימה אינה משובצת');
-  start = nextWorkingDay(start);
-  return editTask(doc, id, { startDate: start, endDate: addWorkingDays(start, duration(task.startDate, task.endDate) - 1) });
+  return editTask(doc, id, { requestedStartDate: start, effortWorkingDays: requiredEffort(task) });
 }
 export function shiftWork(document: RoadmapDocument, id: string, start: string): RoadmapDocument {
   const doc = clone(document), range = workRange(doc, id); if (!range) return doc;
   const delta = workingDifference(range.startDate, nextWorkingDay(start));
-  for (const task of doc.tasks.filter(isScheduled).filter(t => t.workItemId === id)) {
-    task.startDate = addWorkingDays(task.startDate, delta); task.endDate = addWorkingDays(task.endDate, delta);
+  const tasks = doc.tasks.filter(isScheduled).filter(t => t.workItemId === id);
+  for (const task of tasks) {
+    task.requestedStartDate = addWorkingDays(task.requestedStartDate ?? task.startDate, delta);
+    moveTask(doc, task, task.requestedStartDate);
+  }
+  for (const taskId of topological(doc)) {
+    const task = tasks.find(t => t.id === taskId); if (!task) continue;
+    const minimum = requiredStart(doc, taskId);
+    if (minimum && minimum > task.startDate) moveTask(doc, task, minimum);
   }
   return doc;
 }
@@ -101,27 +122,29 @@ export function setIncoming(document: RoadmapDocument, id: string, incoming: Dep
     if (!isScheduled(p)) { requiredStart(doc, id); continue; }
     d.lagWorkingDays = Math.max(d.lagWorkingDays, workingDifference(addWorkingDays(p.endDate, 1), task.startDate));
   }
-  const min = requiredStart(doc, id);
-  if (min && min > task.startDate) { moveTask(task, min); propagate(doc, [id]); }
+  const minimum = requiredStart(doc, id);
+  const min = minimum && task.requestedStartDate && task.requestedStartDate > minimum ? task.requestedStartDate : minimum;
+  if (min && min > task.startDate) { moveTask(doc, task, min); propagate(doc, [id]); }
   const edited = incoming.some(d => document.dependencies.some(old => old.id === d.id && old.lagWorkingDays !== d.lagWorkingDays));
-  if (edited && min) { moveTask(task, min); propagate(doc, [id]); }
+  if (edited && min) { moveTask(doc, task, min); propagate(doc, [id]); }
   return doc;
 }
 export interface ScheduleOptions { startDate: string; workingDays: number; teamId: string | null; workItemId: string | null }
 export function scheduleTask(document: RoadmapDocument, id: string, options: ScheduleOptions): RoadmapDocument {
-  validateRange(options.startDate, options.startDate);
+  epoch(options.startDate);
   if (!Number.isSafeInteger(options.workingDays) || options.workingDays < 1 || options.workingDays > 10000) throw new Error('משך חייב להיות מספר שלם בין 1 ל־10,000 ימי עבודה');
   const doc = clone(document), index = doc.tasks.findIndex(t => t.id === id), item = doc.tasks[index];
   if (!item || isScheduled(item)) throw new Error('הפריט אינו בבקלוג');
   changeTaskTeam(doc, item, options.teamId);
   validateAssignment(doc, item, item.assigneeId ?? null);
   const task: ScheduledTask = { ...item, estimatedWorkingDays: options.workingDays, planningState: 'scheduled', teamId: options.teamId, workItemId: options.workItemId,
-    startDate: options.startDate, endDate: addWorkingDays(options.startDate, options.workingDays - 1) };
+    requestedStartDate: options.startDate, effortWorkingDays: options.workingDays, startDate: options.startDate, endDate: options.startDate };
+  moveTask(doc, task, options.startDate);
   doc.tasks[index] = task; topological(doc);
-  const minimum = requiredStart(doc, id); if (minimum && task.startDate < minimum) moveTask(task, minimum);
+  const minimum = requiredStart(doc, id); if (minimum && task.startDate < minimum) moveTask(doc, task, minimum);
   for (const link of doc.dependencies.filter(d => d.successorId === id)) {
     const p = doc.tasks.find(t => t.id === link.predecessorId)! as ScheduledTask;
-    link.lagWorkingDays = Math.max(0, workingDifference(addWorkingDays(p.endDate, 1), task.startDate));
+    link.lagWorkingDays = Math.max(link.lagWorkingDays, workingDifference(addWorkingDays(p.endDate, 1), options.startDate));
   }
   propagate(doc, [id]); return doc;
 }
@@ -132,6 +155,34 @@ export function returnToBacklog(document: RoadmapDocument, id: string): RoadmapD
   for (const node of topological(doc)) if (reachable.has(node)) for (const d of doc.dependencies.filter(d => d.predecessorId === node)) reachable.add(d.successorId);
   const blockers = doc.tasks.filter(t => t.id !== id && reachable.has(t.id) && isScheduled(t));
   if (blockers.length) throw new Error('לא ניתן להחזיר לבקלוג. משימות משובצות שתלויות בה: ' + blockers.map(t => t.title).join(', '));
-  const { startDate, endDate, ...rest } = task;
-  doc.tasks[index] = { ...rest, estimatedWorkingDays: duration(startDate, endDate), planningState: 'backlog' }; return doc;
+  const { startDate, endDate, requestedStartDate, effortWorkingDays, effortProvenance, scheduleIssue, ...rest } = task;
+  doc.tasks[index] = { ...rest, estimatedWorkingDays: requiredEffort(task), planningState: 'backlog' }; return doc;
+}
+
+// Attendance persists even when the entire affected schedule transaction cannot resolve.
+export function changeAttendance(document: RoadmapDocument, entry: AttendanceException): { document: RoadmapDocument; changed: string[]; unresolved: boolean } {
+  validateAttendance(document, entry);
+  const base = clone(document);
+  base.attendance = [...(base.attendance ?? []).filter(old => old.memberId !== entry.memberId || old.date !== entry.date)];
+  if (entry.status === 'absent') base.attendance.push(entry);
+  const affected = new Set(base.tasks.filter(isScheduled).filter(task => task.assigneeId === entry.memberId && task.status !== 'completed' &&
+    entry.date >= (task.requestedStartDate ?? task.startDate) && (entry.date <= task.endDate || !!task.scheduleIssue)).map(task => task.id));
+  for (const id of topological(base)) if (affected.has(id)) for (const link of base.dependencies.filter(link => link.predecessorId === id)) affected.add(link.successorId);
+  const next = clone(base), changed: string[] = [];
+  try {
+    for (const id of topological(next)) {
+      const task = next.tasks.find(task => task.id === id)!;
+      if (!affected.has(id) || !isScheduled(task) || task.status === 'completed') continue;
+      const minimum = requiredStart(next, id), anchor = task.requestedStartDate ?? task.startDate;
+      task.requestedStartDate = anchor;
+      moveTask(next, task, minimum && minimum > anchor ? minimum : anchor);
+      const old = document.tasks.find(old => old.id === id)!;
+      if (old.startDate !== task.startDate || old.endDate !== task.endDate || (isScheduled(old) && old.scheduleIssue)) changed.push(task.title);
+    }
+    return { document: next, changed, unresolved: false };
+  } catch (error) {
+    for (const task of base.tasks.filter(isScheduled)) if (affected.has(task.id) && task.status !== 'completed')
+      task.scheduleIssue = 'תאריכים קודמים — השיבוץ אינו מעודכן: ' + (error as Error).message;
+    return { document: base, changed: [], unresolved: true };
+  }
 }

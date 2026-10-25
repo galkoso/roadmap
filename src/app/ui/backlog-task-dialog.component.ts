@@ -1,10 +1,11 @@
+import { overlappingTasks } from '../core/availability';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, HostListener, inject, output, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AssigneeFieldComponent } from './assignee-field.component';
 import { changeTaskTeam } from '../core/members';
 import { RoadmapStore } from '../core/store';
 import { BacklogTask, clone, Dependency, isScheduled, palette, statuses, Task, uid } from '../core/model';
-import { formatDate, nextWorkingDay, today } from '../core/dates';
+import { daysBetween, formatDate, nextWorkingDay, today } from '../core/dates';
 import { requiredStart, scheduleTask, ScheduleOptions } from '../core/scheduler';
 @Component({
   selector: 'app-backlog-task-dialog', standalone: true, imports: [FormsModule, AssigneeFieldComponent],
@@ -16,7 +17,7 @@ export class BacklogTaskDialogComponent {
   readonly created = output<BacklogTask>(); readonly scheduled = output<string>();
   readonly draft = signal<BacklogTask | null>(null); readonly mode = signal<'edit' | 'schedule'>('edit');
   readonly error = signal(''); readonly colors = palette;
-  readonly statusOptions = Object.entries(statuses); readonly formatted = formatDate;
+  readonly statusOptions = Object.entries(statuses); readonly formatted = formatDate; readonly span = daysBetween;
   incoming: Dependency[] = []; startDate = nextWorkingDay(today()); workingDays: number | null = 5;
   private original = ''; private isNew = false;
   assignmentMessage = '';
@@ -63,7 +64,7 @@ export class BacklogTaskDialogComponent {
       this.store.commit(doc, 'הפריט נשמר בבקלוג'); if (this.isNew) this.created.emit(saved); this.close();
     } catch (error) { this.error.set((error as Error).message); }
   }
-  schedulePreview(): { document?: ReturnType<typeof scheduleTask>; start?: string; end?: string; changed: string[]; error?: string } {
+  schedulePreview(): { document?: ReturnType<typeof scheduleTask>; start?: string; end?: string; changed: string[]; overlaps?: string[]; error?: string } {
     const draft = this.draft(); if (!draft) return { changed: [] };
     try {
       const options: ScheduleOptions = { startDate: this.startDate, workingDays: Number(this.workingDays), teamId: draft.teamId, workItemId: draft.workItemId };
@@ -71,7 +72,7 @@ export class BacklogTaskDialogComponent {
       if (index >= 0) source.tasks[index] = clone(draft);
       const document = scheduleTask(source, draft.id, options), task = document.tasks.find(t => t.id === draft.id)!;
       const changed = document.tasks.filter(isScheduled).filter(t => t.id !== draft.id && this.store.document().tasks.some(o => o.id === t.id && (o.startDate !== t.startDate || o.endDate !== t.endDate))).map(t => t.title);
-      return { document, start: task.startDate, end: task.endDate, changed };
+      return { document, start: task.startDate, end: task.endDate, changed, overlaps: isScheduled(task) ? overlappingTasks(document, task) : [] };
     } catch (error) { return { error: (error as Error).message, changed: [] }; }
   }
   schedule(): void {

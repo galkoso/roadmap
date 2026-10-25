@@ -49,7 +49,7 @@ pnpm preview
 - לחיצה על משימה פותחת טופס מתחת לציר. השדות נשארים בטיוטה עד ״שמירת השינויים״; ביטול או סגירה משליכים את הטיוטה. כפתור × מחזיר את המקום לציר.
 - גוף פס משימה מזיז אותה. הקצה השמאלי משנה את ההתחלה, והימני משנה את הסיום. פס עבודה אפור מזיז את כל משימות העבודה בכל הצוותים; אין לו ידיות שינוי משך.
 - בזמן גרירה מוצגים התאריך בפועל, משך ושמות המשימות שהושפעו. Escape או pointercancel מבטלים את כל התצוגה המקדימה. מסד הנתונים אינו נכתב בכל pointermove.
-- הזזה ליום שישי או שבת נצמדת ליום ראשון. בטופס, תאריך כזה יוצר שגיאה עם הצעת התאריך הבא, ולא נשמר בחשאי.
+- התחלה מבוקשת שאינה זמינה נשמרת כעוגן; תצוגת השיבוץ מציגה את ההתחלה האפקטיבית ביום הזמין הבא, ללא שינוי בהיקף.
 - טופס משימה מספק חלופה מלאה לגרירה. בטופס עבודה ניתן להזיז את העבודה כולה לתאריך התחלה חדש.
 - גלילה אופקית ימינה ממשיכה אוטומטית לתאריכים עתידיים, וגלילה שמאלה לתאריכים קודמים, בלי צורך בחיצי ניווט. חלון התאריכים המצויר מוגבל בגודלו ומועבר תוך שמירת התאריך באותו מיקום על המסך. תאריכי המשימות אינם משתנים.
 - משימה מחוץ לטווח נשארת בתאריכים שלה; כפתור ↗ בשורתה מנווט לתחילתה.
@@ -92,7 +92,7 @@ pnpm preview
 
 בעמוד `/planning` בוחרים **חודש ושנה**, ולאחר מכן צוות. המשימות שנבחרו, זמינות האנשים והקיפול מוצגים לפי התקופה הנבחרת ונשמרים ברענון. הניווט בין העמודים משמר את טווח וזום ה־Roadmap ואת קיפול וגלילת הבקלוג.
 
-- מזינים ״ימי עבודה זמינים״ לכל אדם והערך התקין נשמר אוטומטית, ללא כפתור שמירה. **קיבולת הצוות מחושבת כסכום זמינות האנשים**; אין יותר שדה לעריכת סך צוות ידני. מתקבלים אפס וחצאי ימים עד 1,000,000. שדה ריק אינו אפס ומוצגת שגיאה ביציאה מהשדה. זמינות שלא הוזנה מסומנת במפורש, וסיכומי הצוות מסויגים כנתונים ידועים בלבד.
+- הזמינות לקריאה בלבד ומחושבת מלוח הנוכחות ב־Velocity. קישור ״עריכת זמינות ב־Velocity״ פותח את אותו צוות וחודש ואדם. קיבולת הצוות היא סכום ימי האדם הזמינים, ללא שדה עריכה ידני או העתקה בין העמודים.
 - לכל אדם מוצגים היקף המשימות שהוקצו לו בתכנון החודש, מספר המשימות והיתרה: זמינות פחות היקף. האחראי הקיים במשימה משמש אוטומטית גם לחישוב היתרה. אפשר לשנות את אותו בורר ״אחראי״ בשורת המשימה. משימה משויכת לאדם אחד בצוות התכנון ונגרעת מהיתרה שלו פעם אחת. שינוי האחראי או הסרה מהתכנון מעדכנים את היתרות מיד. יתרה שלילית מותרת ומוצגת כהתרעת חריגה.
 - לכל משימה **אחראי אחד משותף לבקלוג, ל־Roadmap ולתכנון החודשי**. שינוי האחראי מופיע בכל העמודים. משימה ללא צוות יכולה לקבל אחראי בלי לקבל את הצוות שלו. חיוב הימים נעשה כאשר האחראי שייך לצוות התכנון.
 - מימין מופיעות רק המשימות שנבחרו לצוות בחודש ובשנה שנבחרו. משמאל הבקלוג לבחירה, עם סינון למשימות הצוות, למשימות ללא צוות או לשתיהן. הוספה לתכנון משאירה את המשימה בבקלוג המקורי ואינה משנה תאריכים, סטטוס או היקף.
@@ -101,7 +101,7 @@ pnpm preview
 - ההיקף משתמש ב־`estimatedWorkingDays` לבקלוג ובמשך ימי העבודה בפועל למשימות משובצות. משימה ללא היקף מסומנת ״חסר היקף״, ויתרת האדם מסויגת כלא סופית. אפשר להשלים את ההערכה בטופס העריכה הקיים. אין הכפלה במספר אנשים ואין פיצול היקף בין אנשים או חודשים. משימה שטרם שויכה לאדם נספרת בהיקף הצוות, ומוצג מספר המשימות ללא אחראי בתכנון.
 - ״ל־Roadmap״ משתמש בטופס השיבוץ ובמנוע התזמון הקיימים. בחודש שאינו הנוכחי, מוצע יום העבודה הראשון בחודש; המשתמש בוחר תאריך בפועל, ואימות סוף השבוע והתלויות נשמר. רק אישור שיבוץ משנה את מצב המשימה. חודש התכנון והאחראי נשמרים לאחר השיבוץ. הסרה מהתכנון אינה מוחקת או מבטלת שיבוץ.
 - מחיקת משימה מנקה את הפניותיה בכל החודשים. העברת אדם לצוות אחר או הסרתו מנקות זמינות ושיוכים בלתי מתאימים בכל החודשים, בלי להעביר זמינות לצוות החדש. בחירה שאיבדה צוות תכנון מוצגת באזור מפורש שאפשר לתקן. פעולות התכנון, הזמינות, האחריות והעברת החודש משתתפות ב־Undo/Redo.
-- המסמך והגיבויים משתמשים בסכימה **6**. מיגרציה מסכימה 5 מסירה את האחראי הנפרד בתכנון: האחראי המקורי במשימה מקבל עדיפות, ושיוך התכנון הישן מועבר למשימה רק אם אין לה אחראי והוא תקף. תוכנית ישנה מסכימה 4 עוברת, ללא שינוי במשימות, לחודש הנוכחי באזור הזמן ירושלים בזמן השדרוג הראשון. נשמרים הבחירה, קישורי צוות התכנון ופירוט זמינות האנשים; הסכום הידני הישן נשמר בנתונים לצורכי תאימות וגיבוי, אך אינו משמש לחישוב הקיבולת החדשה. גיבויי 1–3 מקבלים תוכניות חודשיות ריקות. ייבוא מאמת תקופות, כפילויות, הפניות, שיוך אדם לצוות וערכים מספריים לפני החלפה אטומית.
+- המסמך והגיבויים משתמשים בסכימה **7**. מיגרציה מסכימה 5 מסירה את האחראי הנפרד בתכנון: האחראי המקורי במשימה מקבל עדיפות, ושיוך התכנון הישן מועבר למשימה רק אם אין לה אחראי והוא תקף. תוכנית ישנה מסכימה 4 עוברת, ללא שינוי במשימות, לחודש הנוכחי באזור הזמן ירושלים בזמן השדרוג הראשון. נשמרים הבחירה, קישורי צוות התכנון ופירוט זמינות האנשים; הסכום הידני הישן נשמר בנתונים לצורכי תאימות וגיבוי, אך אינו משמש לחישוב הקיבולת החדשה. גיבויי 1–3 מקבלים תוכניות חודשיות ריקות. ייבוא מאמת תקופות, כפילויות, הפניות, שיוך אדם לצוות וערכים מספריים לפני החלפה אטומית.
 
 ## כללי התזמון
 
@@ -113,7 +113,7 @@ pnpm preview
 - בריבוי קודמות לוקחים את המועד המאוחר ביותר. שינוי משימה מחשב רק צאצאים בסדר טופולוגי, עם שמירת משך כל צאצא. אין תלות בסדר השורות.
 - דחייה ידנית מעדכנת את מרווחי הקשרים הנכנסים. הזזה מוקדמת מהמגבלה הנוכחית נצמדת למועד החוקי ומוצגת בחיווי. ניתן לשנות את המרווח עצמו בטופס כדי להקטין אותו.
 - יצירת קשר חדש משמרת מיקום שכבר חוקי ומחשבת מרווח מתאים. אחרת מזיזה את המשימה ואת צאצאיה. הסרת קשר או מחיקת משימה אינן דוחסות תאריכים.
-- הזזת עבודה מעבירה כל משימה באותו הפרש של ימי עבודה, ומשמרת משכים, מרווחים, צבע, צוות וסטטוס. עבודות אחרות אינן מושפעות.
+- הזזת עבודה מעבירה את עוגני ההתחלה בהפרש ימי עבודה גלובליים ומחשבת כל סיום לפי לוח האחראי והתלויות. ההיקף נשמר; היעדרויות שונות עשויות לשנות מרווחי סיום יחסיים.
 - סטטוסים נערכים ידנית; ״הושלמה״ אינה נועלת את התזמון. **צבע נבחר ידנית ואינו נגזר מצוות או מסטטוס**.
 - הערות הן **טקסט רגיל**, ללא HTML או עורך עשיר. תוכן מיובא אינו מורץ.
 
@@ -127,7 +127,7 @@ pnpm preview
 
 ייצוא מוריד `roadmap-backup-YYYY-MM-DD.json` עם schemaVersion, זמן ייצוא, מסמך מלא והעדפות. שמרו את הקובץ מחוץ לאחסון הדפדפן.
 
-ייבוא: בחירת JSON → אימות → תקציר צוותים/עבודות/משימות → אפשרות לייצא קודם → אישור מפורש → החלפה אטומית. המסמך והייצוא משתמשים בסכימה **6**. מיגרציה מסכימה 5 מסירה את האחראי הנפרד בתכנון: האחראי המקורי במשימה מקבל עדיפות, ושיוך התכנון הישן מועבר למשימה רק אם אין לה אחראי והוא תקף. מסמכים וגיבויים מסכימות **1, 2, 3 ו־4** עוברים מיגרציה בזיכרון: משימות מסכימה 1 הופכות ל־scheduled; בסכימות 1 ו־2 נוספים אוסף אנשים ריק ואחראי null; בסכימות 1–3 נוסף מצב תכנון חודשי ריק; תוכנית קיימת מסכימה 4 מועברת לחודש הנוכחי עם הבחירה וזמינות האנשים הקיימות, בלי שינוי IDs, תאריכים, צבעים, סטטוסים או תלויות. הנתונים נשארים באותו IndexedDB ובאותה כתובת. המיגרציה נכתבת בעסקה אטומית ורק אחרי אימות. גרסאות אחרות נדחות. נתונים ישנים לא תקינים אינם נמחקים, אינם מקבלים תאריכי דמה ואינם מוחלפים בדוגמה; הטעינה מציגה שגיאה וניתן לייצא את המקור באמצעות ״ייצוא הנתונים המקוריים לבדיקה״. קובץ recovery הוא חומר לבדיקה, ואינו גיבוי תקין בהכרח. קובץ שגוי או עסקה שנכשלה אינם משנים את התכנון הקיים. יש הגבלה של 10MB לקובץ ו־10,000 רשומות לכל אוסף.
+ייבוא: בחירת JSON → אימות → תקציר צוותים/עבודות/משימות → אפשרות לייצא קודם → אישור מפורש → החלפה אטומית. המסמך והייצוא משתמשים בסכימה **7**. מיגרציה מסכימה 5 מסירה את האחראי הנפרד בתכנון: האחראי המקורי במשימה מקבל עדיפות, ושיוך התכנון הישן מועבר למשימה רק אם אין לה אחראי והוא תקף. מסמכים וגיבויים מסכימות **1, 2, 3 ו־4** עוברים מיגרציה בזיכרון: משימות מסכימה 1 הופכות ל־scheduled; בסכימות 1 ו־2 נוספים אוסף אנשים ריק ואחראי null; בסכימות 1–3 נוסף מצב תכנון חודשי ריק; תוכנית קיימת מסכימה 4 מועברת לחודש הנוכחי עם הבחירה וזמינות האנשים הקיימות, בלי שינוי IDs, תאריכים, צבעים, סטטוסים או תלויות. הנתונים נשארים באותו IndexedDB ובאותה כתובת. המיגרציה נכתבת בעסקה אטומית ורק אחרי אימות. גרסאות אחרות נדחות. נתונים ישנים לא תקינים אינם נמחקים, אינם מקבלים תאריכי דמה ואינם מוחלפים בדוגמה; הטעינה מציגה שגיאה וניתן לייצא את המקור באמצעות ״ייצוא הנתונים המקוריים לבדיקה״. קובץ recovery הוא חומר לבדיקה, ואינו גיבוי תקין בהכרח. קובץ שגוי או עסקה שנכשלה אינם משנים את התכנון הקיים. יש הגבלה של 10MB לקובץ ו־10,000 רשומות לכל אוסף.
 
 ## מבנה הפרויקט
 
@@ -164,3 +164,17 @@ ROADMAP_TEST_PORT=4201 pnpm test:e2e
 מקורות: [תאימות Angular](https://angular.dev/reference/versions), [Signals](https://angular.dev/guide/signals), [Standalone components](https://angular.dev/guide/components), [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API), [מדיניות שמירה ומחיקת אחסון](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria).
 
 תוצאות בדיקות ומגבלות מאומתות נמצאות ב־[VALIDATION.md](VALIDATION.md).
+
+## Velocity attendance and calendar-aware scheduling
+
+`/velocity` provides planned attendance and capacity, not historical throughput or Scrum velocity. The Hebrew RTL calendar defaults to present on Sunday–Thursday; Friday/Saturday are disabled. No holidays are deducted implicitly. Viewing a month creates no records. Toggling a work date stores an exact-date absence keyed by stable member ID; restoring presence removes that exception. Counts and scheduling use the same pure functions in `core/availability.ts`.
+
+Velocity and Monthly Planning share the selected team/month/year, and retain the selected person for editing. Roadmap's date range remains independent. Existing month-specific planning membership is preserved; changing the capacity period never copies or moves tasks. Selected effort is a planning selection, not actual scheduled monthly utilization. Team capacity is person-days: two people available for 15 days provide 30 person-days. Manual person/team availability controls have been retired.
+
+Real task scheduling and editing show the requested anchor, effective start, effort, completion, elapsed span, execution dates and skipped dates. `requestedStartDate` and `effortWorkingDays` remain separate from calculated `startDate`/`endDate`. An assigned task counts only the person's available dates. Its continuous Roadmap bar spans intervening absences and weekends. Unassigned tasks use the global working week with an explicit indicator; no person is selected automatically. Overlapping assigned execution dates produce a warning, without resource leveling. Integer effort is required, matching the existing estimate model; unsupported fractional effort is rejected explicitly.
+
+Dragging a task body changes its requested anchor and preserves effort. Endpoint resizing counts available dates in the selected range and snaps the result; empty execution ranges are rejected. Moving a whole work item shifts requested anchors by the existing global working-day offset, then recalculates each person's task and dependency constraints. Relative finish offsets may change. Dependency lags retain their global working-day meaning, followed by the successor's next personally available date.
+
+Attendance edits recalculate affected unfinished tasks and their dependency descendants in topological order as one Undo/Redo action. Independent tasks and completed historical schedules remain unchanged. There are no actual-progress fields: in-progress tasks recalculate their full recorded effort from their preserved anchor; historical completed days are not invented. Search is bounded to 1,096 calendar dates from the legal anchor. If a chain cannot resolve, attendance persists, all affected dates retain their last-known values, and the entire affected chain is explicitly marked outdated in task details and bar descriptions. No partial chain is committed.
+
+Schema 7 migrates backups from versions 1–6 without rewriting historical dates. It archives old manual capacity in `legacyCapacityArchive`, retains the original planning data, and explains that daily absences cannot be inferred from aggregate totals. Default counts may differ from the old inputs. Legacy scheduled effort is inferred once using the old global business-day calculation, with `effortProvenance: 'legacy-global-calendar'`; an absence-extended span is never used to infer effort again. Backups include exact-date exceptions, team/period/person preferences, requested anchors, effort and unresolved markers. Duplicate exceptions, invalid dates, weekend overrides and dangling people are rejected before replacement. Attendance uses the existing atomic local persistence, revision checks and save-error indicators; existing deployment/authentication behavior is retained.

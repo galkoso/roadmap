@@ -1,3 +1,4 @@
+import { legacyFields } from './legacy-fields';
 import 'fake-indexeddb/auto';
 import { describe, expect, it, vi } from 'vitest';
 import { IDBObjectStore } from 'fake-indexeddb';
@@ -73,39 +74,39 @@ describe('people capacity and planned workload', () => {
     let doc = setCapacity(fixture(), 'team-a', 15.5, 'member-a', OCT);
     doc = setCapacity(doc, 'team-a', 10, 'member-b', OCT); doc = setCapacity(doc, 'team-a', 4, 'member-a', NOV);
     doc = setCapacity(doc, 'team-a', 0, 'member-b', NOV); doc = setCapacity(doc, 'team-b', 7, 'other-member', OCT);
-    expect(capacitySummary(doc, 'team-a', OCT)).toMatchObject({ available: 25.5, missingAvailability: 0, remaining: 25.5 });
-    expect(capacitySummary(doc, 'team-a', NOV)).toMatchObject({ available: 4, missingAvailability: 0 });
-    expect(capacitySummary(doc, 'team-a', '2027-10')).toMatchObject({ available: 0, missingAvailability: 2 });
-    expect(capacitySummary(doc, 'team-b', OCT).available).toBe(7); expect(doc.tasks).toEqual(fixture().tasks);
+    expect(capacitySummary(doc, 'team-a', OCT)).toMatchObject({ available: 42, missingAvailability: 0, remaining: 42 });
+    expect(capacitySummary(doc, 'team-a', NOV)).toMatchObject({ available: 44, missingAvailability: 0 });
+    expect(capacitySummary(doc, 'team-a', '2027-10')).toMatchObject({ available: 42, missingAvailability: 0 });
+    expect(capacitySummary(doc, 'team-b', OCT).available).toBe(21); expect(doc.tasks).toEqual(fixture().tasks);
     // Old manually entered capacity remains archival data; the team total always comes from people now.
     monthlyPlan(doc, OCT).teamCapacities[0].availableWorkingDays = 100;
-    expect(capacitySummary(doc, 'team-a', OCT).available).toBe(25.5);
+    expect(capacitySummary(doc, 'team-a', OCT).available).toBe(42);
   });
   it('subtracts each assigned task once from its person, uses the original assignee and updates that same field on reassignment', () => {
     let doc = select(select(fixture(), 'a'), 'b'); doc = setCapacity(doc, 'team-a', 10, 'member-a', OCT); doc = setCapacity(doc, 'team-a', 4, 'member-b', OCT);
     const before = clone(doc.tasks); doc = assignPlanningTask(doc, 'a', 'member-a', OCT); doc = assignPlanningTask(doc, 'b', 'member-a', OCT);
-    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ available: 10, known: 8, remaining: 2, tasks: 2 });
+    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ available: 21, known: 8, remaining: 13, tasks: 2 });
     doc = assignPlanningTask(doc, 'a', 'member-b', OCT);
-    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT).remaining).toBe(7);
-    expect(memberCapacitySummary(doc, 'team-a', 'member-b', OCT)).toMatchObject({ known: 5, remaining: -1 });
-    expect(capacitySummary(doc, 'team-a', OCT)).toMatchObject({ known: 8, remaining: 6, unassignedTasks: 0 });
+    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT).remaining).toBe(18);
+    expect(memberCapacitySummary(doc, 'team-a', 'member-b', OCT)).toMatchObject({ known: 5, remaining: 16 });
+    expect(capacitySummary(doc, 'team-a', OCT)).toMatchObject({ known: 8, remaining: 34, unassignedTasks: 0 });
     expect(doc.tasks).toEqual(before.map(t => ({ ...t, assigneeId: t.id === 'a' ? 'member-b' : t.id === 'b' ? 'member-a' : t.assigneeId }))); 
-    doc = assignPlanningTask(doc, 'a', null, OCT); expect(memberCapacitySummary(doc, 'team-a', 'member-b', OCT).remaining).toBe(4);
+    doc = assignPlanningTask(doc, 'a', null, OCT); expect(memberCapacitySummary(doc, 'team-a', 'member-b', OCT).remaining).toBe(21);
     expect(capacitySummary(doc, 'team-a', OCT).unassignedTasks).toBe(1);
   });
   it('assigns a task without a real team to an existing planning-team person without assigning the task to a team', () => {
     const doc = assignPlanningTask(select(fixture(), 'no-team'), 'no-team', 'member-a', OCT);
     expect(task(doc, 'no-team')).toEqual({ ...task(fixture(), 'no-team'), assigneeId: 'member-a' }); expect(planningMemberId(doc, 'no-team', OCT)).toBe('member-a');
-    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ available: null, known: 4, remaining: null });
+    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ available: 21, known: 4, remaining: 17 });
     expect(() => assignPlanningTask(doc, 'no-team', 'other-member', OCT)).toThrow(/צוות/);
     expect(() => assignPlanningTask(doc, 'a', 'member-a', OCT)).toThrow(/החודש/);
   });
   it('reports unknown effort and unavailable capacity separately; effort edits update the same monthly record', () => {
     let doc = assignPlanningTask(select(fixture(), 'unknown'), 'unknown', 'member-a', OCT);
-    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ available: null, known: 0, missing: 1, remaining: null });
+    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ available: 21, known: 0, missing: 1, remaining: 21 });
     doc = setCapacity(doc, 'team-a', 6, 'member-a', OCT);
-    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ remaining: 6, missing: 1 });
-    task(doc, 'unknown').estimatedWorkingDays = 8; expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ remaining: -2, missing: 0 });
+    expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ remaining: 21, missing: 1 });
+    task(doc, 'unknown').estimatedWorkingDays = 8; expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ remaining: 13, missing: 0 });
   });
   it.each(['', ' ', '-1', 'NaN', 'Infinity', '0.3', '1000001'])('rejects invalid availability %j', value => { expect(() => parseCapacityDays(value)).toThrow(); });
   it('accepts explicit zero and half days and rejects invalid months, years, people and teams', () => {
@@ -128,9 +129,9 @@ describe('Roadmap handoff and cleanup across months', () => {
     expect(planningTasks(removed, 'team-a', 'candidates', 'all', NOV).some(t => t.id === 'no-team')).toBe(false);
     expect(returnToBacklog(removed, 'no-team').tasks.find(t => t.id === 'no-team')!.planningState).toBe('backlog'); expect(doc).toEqual(before);
   });
-  it('keeps existing weekend and dependency validation', () => {
+  it('advances weekend anchors while preserving dependency validation', () => {
     const doc = select(fixture(), 'a'); doc.dependencies = [{ id: 'dep', predecessorId: 'b', successorId: 'a', type: 'finish_to_start', lagWorkingDays: 0 }];
-    expect(() => scheduleTask(doc, 'a', { startDate: '2026-10-30', workingDays: 5, teamId: 'team-a', workItemId: 'work-a' })).toThrow(/שישי/);
+    expect(() => scheduleTask(doc, 'a', { startDate: '2026-10-30', workingDays: 5, teamId: 'team-a', workItemId: 'work-a' })).toThrow(/קודם/);
     expect(() => scheduleTask(doc, 'a', { startDate: '2026-10-29', workingDays: 5, teamId: 'team-a', workItemId: 'work-a' })).toThrow(/b/);
   });
   it('cleans moved/deleted people in every month and preserves selected tasks', () => {
@@ -152,14 +153,14 @@ describe('migration, backup validation and atomic storage', () => {
     const doc = seedDocument(), { planning, ...rest } = doc;
     const old = { ...rest, schemaVersion: version, tasks: doc.tasks.map(({ planningState, ...task }) => version === 1 ? task : { ...task, planningState }) };
     const before = clone(old), migrated = validateDocument(old);
-    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION); expect(migrated.planning).toEqual({ plans: [] }); expect(migrated.tasks).toEqual(doc.tasks); expect(old).toEqual(before);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION); expect(migrated.planning).toEqual({ plans: [] }); expect(migrated.tasks.map(legacyFields)).toEqual(doc.tasks.map(legacyFields)); expect(old).toEqual(before);
   });
   it('migrates a legacy plan into the current Jerusalem month with all selections, links and availability retained', () => {
     const doc = fixture(), legacy = { selectedTaskIds: ['no-team'], taskTeamLinks: [{ taskId: 'no-team', teamId: 'team-a' }],
       teamCapacities: [{ teamId: 'team-a', availableWorkingDays: 40, memberAvailability: [{ memberId: 'member-a', availableWorkingDays: 15 }] }] };
     const old = { ...doc, schemaVersion: 4, planning: legacy }, before = clone(old), next = validateDocument(old);
     expect(next.planning.plans).toEqual([{ ...legacy, period: currentPlanningPeriod() }]); expect(next.tasks).toEqual(doc.tasks); expect(old).toEqual(before);
-    expect(capacitySummary(next, 'team-a', currentPlanningPeriod()).available).toBe(15);
+    expect(capacitySummary(next, 'team-a', currentPlanningPeriod()).available).toBe(42);
     const backup = { schemaVersion: 4, exportedAt: new Date().toISOString(), document: old, preferences: initialPreferences() };
     expect(parseBackup(JSON.stringify(backup)).document).toEqual(next);
   });

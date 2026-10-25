@@ -1,3 +1,4 @@
+import { legacyFields } from '../tests/legacy-fields';
 import { expect, Page, test } from './fixtures';
 async function saved(page: Page) { await expect(page.locator('.save-state')).toHaveText('נשמר'); }
 async function planning(page: Page) {
@@ -56,9 +57,9 @@ test('work drag from another team moves all teams, one undo restores all; resize
   expect(resized.document.tasks[0].endDate).not.toBe(before.document.tasks[0].endDate);
   expect(resized.document.tasks[1].startDate).not.toBe(before.document.tasks[1].startDate);
 });
-test('form validates weekends, changes team and metadata without scheduling, refresh restores zoom and groups', async ({ page }) => {
+test('form previews unavailable anchors, changes team and metadata without scheduling, refresh restores zoom and groups', async ({ page }) => {
   const before = await planning(page); await page.getByRole('button', { name: 'מימוש השירותים בביצוע' }).click();
-  await page.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-16'); await expect(page.getByRole('alert')).toContainText('שישי ושבת');
+  await page.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-16'); await expect(page.locator('.editor-panel')).toContainText('התחלה בפועל'); await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByLabel('תאריך התחלה', { exact: true }).fill(before.document.tasks[1].startDate);
   await page.getByLabel('צוות אחראי', { exact: true }).selectOption('team-c'); await page.getByLabel('תיאור / הערות').fill('בדיקת טקסט <b>רגיל</b>');
   await page.getByRole('button', { name: 'שמירת השינויים' }).click(); await saved(page);
@@ -156,7 +157,7 @@ test('300-task browser render, vertical sticky dates, stable row DOM during prev
 });
 test('reload returns to today; left resize keeps end and pointer cancellation restores preview', async ({ page }) => {
   const before = await planning(page); await drag(page, architecture, 28, false, 'start'); await saved(page); const resized = await planning(page);
-  expect(resized.document.tasks[0].endDate).toBe(before.document.tasks[0].endDate); expect(resized.document.tasks[0].startDate).not.toBe(before.document.tasks[0].startDate); expect(resized.document.tasks[1]).toEqual(before.document.tasks[1]);
+  expect(resized.document.tasks[0].endDate).toBe(before.document.tasks[0].endDate); expect(resized.document.tasks[0].startDate).not.toBe(before.document.tasks[0].startDate); expect(legacyFields(resized.document.tasks[1])).toEqual(legacyFields(before.document.tasks[1]));
   const bar = page.getByTestId(architecture), box = await bar.boundingBox(); await page.mouse.move(box!.x + box!.width / 2, box!.y + 12); await page.mouse.down(); await page.mouse.move(box!.x + box!.width / 2 + 28, box!.y + 12); await page.evaluate(() => document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }))); await page.mouse.up(); expect((await planning(page)).document.tasks).toEqual(resized.document.tasks);
   await page.locator('.timeline-viewport').evaluate(el => el.scrollLeft += 125); const centeredDate = await page.locator('.timeline-viewport').evaluate(el => { const ticks = el.querySelectorAll('.day-band > div'); const box = el.getBoundingClientRect(), x = box.x + (el.clientWidth - (el.querySelector('.names-header') as HTMLElement).offsetWidth) / 2; return Array.from(ticks).find(t => { const rect = t.getBoundingClientRect(); return rect.left <= x && rect.right > x; })?.textContent; });
   await expect.poll(async () => Number((await planning(page)).preferences.center.slice(8))).toBe(Number(centeredDate));
@@ -264,9 +265,9 @@ test('heading creation and task creation validate separately, preserve inclusive
   await row.getByRole('button', { name: 'הוספת משימה תחת כותרת עם משימה', exact: true }).click();
   const editor = page.getByRole('region', { name: 'עריכת משימה' });
   await editor.getByLabel('שם המשימה', { exact: true }).fill('משימה עם תקופה');
-  await editor.getByLabel('תאריך סיום', { exact: true }).fill('2026-10-21');
+  await editor.getByLabel('היקף בימי עבודה', { exact: true }).fill('5');
   await editor.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-16');
-  await expect(editor.getByText(/שישי ושבת/)).toBeVisible(); await expect(editor.getByRole('button', { name: 'הוספת משימה', exact: true })).toBeDisabled();
+  await expect(editor).toContainText('התחלה בפועל 18.10.2026'); await expect(editor.getByRole('button', { name: 'הוספת משימה', exact: true })).toBeEnabled();
   expect((await planning(page)).document.tasks).toEqual(before.document.tasks);
   await editor.getByLabel('תאריך התחלה', { exact: true }).fill('2026-10-15'); await expect(editor).toContainText('5 ימי עבודה');
   await page.screenshot({ path: 'test-results/create-task-editor.png' });

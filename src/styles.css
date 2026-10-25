@@ -120,3 +120,30 @@
 .login-page{min-height:100dvh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at top,#203755 0,transparent 65%)}
 .login-card{width:min(100%,400px);padding:36px;border:1px solid #31547d;border-radius:16px;background:var(--surface);box-shadow:0 24px 80px #0005}
 .login-brand{font-size:12px;font-weight:700;letter-spacing:3px;color:#8bb3f0}.login-card h1{font-size:25px;margin:16px 0 12px}.login-card>p{color:#a5b8d2;line-height:1.6}.login-card form{display:grid;gap:12px;margin-top:28px}.login-card label{margin:0}.login-card input{width:100%;margin:0}.login-card .primary{width:100%;margin-top:8px;min-height:44px}.login-card .login-error{margin:0;color:#ffb4b4;line-height:1.5}.page-navigation .logout-button{margin-inline-start:auto;white-space:nowrap}@media(max-width:600px){.login-card{padding:26px}.page-navigation{flex-wrap:wrap}.page-navigation a{padding:10px 12px}}
+
+/* Attendance uses the same document and capacity period as Monthly Planning. */
+.velocity-page{border:1px solid #2b3c51;border-radius:14px;background:var(--surface);overflow:hidden;color:#dae4f2}
+.velocity-heading{display:flex;align-items:center;justify-content:space-between;padding:28px 30px;border-bottom:1px solid #2b3c51;gap:20px}
+.velocity-heading h1{font-size:32px;font-weight:400;margin:0 0 8px}.velocity-heading p{color:#a5b6cc;margin:0;font-size:15px}
+.velocity-page a{color:#a8c5ff}.velocity-heading a{border:1px solid #35485f;border-radius:8px;padding:12px 16px;text-decoration:none;white-space:nowrap}
+.velocity-controls{display:flex;align-items:center;gap:22px;padding:20px 30px;border-bottom:1px solid #2b3c51;flex-wrap:wrap}
+.velocity-controls label{display:flex;align-items:center;gap:10px;margin:0;font-size:15px;font-weight:400}
+.velocity-controls select,.velocity-controls input{width:115px;margin:0;padding:12px}.velocity-controls label:first-child select{width:140px}
+.velocity-team-total{margin:0 auto 0 0;color:#a5b6cc;font-size:15px}.velocity-team-total strong{font-weight:400}
+.velocity-layout{display:grid;grid-template-columns:240px minmax(0,1fr)}
+.velocity-roster{padding:25px 18px;border-left:1px solid #2b3c51}.velocity-roster h2{font-size:15px;font-weight:400;color:#a5b6cc;margin:0 0 18px}
+.velocity-roster button{display:flex;justify-content:space-between;align-items:center;width:100%;padding:17px 14px;margin-bottom:10px;border:1px solid #2c3e54;border-radius:9px;background:transparent;font-size:18px;text-align:start;gap:12px}
+.velocity-roster button small{font-size:14px;color:#a5b6cc}.velocity-roster button.active{background:#1d2d42;border-color:#9abaff;color:#a8c5ff;box-shadow:inset 0 0 0 1px #9abaff}
+.velocity-roster p{color:#a5b6cc;line-height:1.8}.velocity-calendar{padding:25px 30px;min-width:0}
+.velocity-calendar-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:20px}.velocity-calendar h2{font-size:19px;font-weight:400;margin:0}
+.velocity-legend{display:flex;gap:18px;font-size:14px}.present-key{color:#a6dfcf}.absent-key{color:#ffc3a0}
+.velocity-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}.velocity-weekday{text-align:center;color:#a5b6cc;padding:5px 0 9px;font-size:15px}
+.velocity-grid button{display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;min-height:76px;border:1px solid transparent;border-radius:9px;padding:9px 3px;font-size:20px;font-weight:400}
+.velocity-grid button small{font-size:14px;white-space:nowrap}.velocity-grid .present{background:#1a3b35;color:#a6dfcf}.velocity-grid .absent{background:#492f27;color:#ffc3a0}
+.velocity-grid .weekend{background:#1b2a3d;color:#8d9eb4;opacity:1;cursor:default}.velocity-grid button:not(:disabled):hover{filter:brightness(1.18);border-color:currentColor}
+.velocity-page button:focus-visible,.velocity-page a:focus-visible{outline:3px solid #a8c5ff;outline-offset:3px}
+.velocity-person-summary{text-align:start;color:#a5b6cc;font-size:15px;margin:20px 0 0;line-height:1.8}
+.velocity-footer{border-top:1px solid #2b3c51;padding:16px 30px;color:#a5b6cc;font-size:13px;line-height:1.7}.velocity-footer p{margin:3px 0}.velocity-footer>div{display:flex;align-items:center;gap:8px;margin-top:10px}.velocity-footer>div span{margin-inline-end:auto}
+.velocity-migration{padding:12px 30px;color:#a5b6cc;border-top:1px solid #2b3c51;line-height:1.7;font-size:12px}.planning-number-controls a{font-size:12px;color:#a8c5ff}.planning-number-controls{gap:12px}
+@media(max-width:850px){.velocity-layout{grid-template-columns:190px minmax(0,1fr)}.velocity-calendar{padding:22px 18px}.velocity-controls{gap:15px}.velocity-team-total{width:100%}}
+@media(max-width:650px){.velocity-heading{padding:20px 16px;align-items:flex-start}.velocity-heading h1{font-size:28px}.velocity-heading p{font-size:13px;line-height:1.6}.velocity-heading a{font-size:12px;padding:10px}.velocity-controls{padding:16px;gap:12px}.velocity-controls label{flex:1;min-width:85px;display:block;font-size:13px}.velocity-controls select,.velocity-controls input,.velocity-controls label:first-child select{width:100%;margin-top:6px}.velocity-team-total{font-size:13px;line-height:1.7}.velocity-layout{display:flex;flex-direction:column}.velocity-roster{padding:16px;border-left:0;border-bottom:1px solid #2b3c51;display:flex;flex-wrap:wrap;gap:8px}.velocity-roster h2{width:100%;margin:0 0 5px}.velocity-roster button{width:auto;flex:1 1 135px;margin:0;font-size:16px;padding:12px}.velocity-calendar{padding:20px 10px}.velocity-calendar-heading{padding:0 5px}.velocity-calendar h2{font-size:16px}.velocity-legend{font-size:12px}.velocity-grid{gap:4px}.velocity-grid button{min-height:65px;font-size:17px;padding:7px 1px;gap:9px;border-radius:6px}.velocity-grid button small{font-size:10px}.velocity-weekday{font-size:13px}.velocity-person-summary{font-size:12px;padding:0 5px}.velocity-footer{padding:14px 16px}.velocity-migration{padding:12px 16px}.page-navigation{gap:0;flex-wrap:wrap}.page-navigation a{padding:10px 12px}}

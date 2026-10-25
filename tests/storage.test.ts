@@ -1,3 +1,4 @@
+import { legacyFields } from './legacy-fields';
 import { SCHEMA_VERSION } from '../src/app/core/model';
 import 'fake-indexeddb/auto';
 import { IDBObjectStore } from 'fake-indexeddb';
@@ -58,5 +59,5 @@ it('migrates an existing IndexedDB document in one write and retains legacy data
   await expect(db.save(migrated, initialPreferences(), 1)).rejects.toThrow(); put.mockRestore(); expect(await db.load()).toEqual(original);
   await db.save(migrated, initialPreferences(), 1);
   const stored = await db.load(); expect(stored?.document.schemaVersion).toBe(SCHEMA_VERSION);
-  expect(stored?.document.tasks.map(({ planningState, ...task }) => task)).toEqual(legacy.tasks);
+  expect(stored?.document.tasks.map(legacyFields).map(({ planningState, ...task }) => task)).toEqual(legacy.tasks);
 });

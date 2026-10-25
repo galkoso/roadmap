@@ -1,3 +1,4 @@
+import { legacyFields } from './legacy-fields';
 import { describe, expect, it } from 'vitest';
 import { addDays, addWorkingDays, daysBetween, duration, epoch, isWorkingDay, nextWorkingDay, workingDifference } from '../src/app/core/dates';
 import { clone, Dependency } from '../src/app/core/model';
@@ -38,7 +39,7 @@ describe('atomic scheduling and dependency graph', () => {
       const moved = task(shifted, t.id);
       if (t.workItemId === 'services') {
         expect(workingDifference(t.startDate, moved.startDate)).toBe(5); expect(duration(moved.startDate, moved.endDate)).toBe(duration(t.startDate, t.endDate));
-        expect({ ...moved, startDate: t.startDate, endDate: t.endDate }).toEqual(t);
+        expect(legacyFields({ ...moved, startDate: t.startDate, endDate: t.endDate })).toEqual(legacyFields(t));
       } else expect(moved).toEqual(t);
     }
     expect(shifted.dependencies).toEqual(doc.dependencies); expect(workRange(shifted, 'services')!.startDate).toBe(addWorkingDays(range.startDate, 5));
@@ -49,7 +50,7 @@ describe('atomic scheduling and dependency graph', () => {
     expect(task(moved, 'implementation').startDate).toBe(addWorkingDays(p.endDate, 3));
     expect(task(moved, 'testing').startDate).toBe(addWorkingDays(task(moved, 'implementation').endDate, 1));
     expect(task(moved, 'monitor')).toEqual(task(doc, 'monitor'));
-    const back = editTask(moved, p.id, { endDate: p.endDate }); expect(back.tasks).toEqual(doc.tasks);
+    const back = editTask(moved, p.id, { endDate: p.endDate }); expect(back.tasks.map(legacyFields)).toEqual(doc.tasks.map(legacyFields));
   });
   it('metadata and team changes do not modify dates or dependency lags', () => {
     const doc = seedDocument();
@@ -104,7 +105,7 @@ describe('atomic scheduling and dependency graph', () => {
   });
   it('computes a 300-task chain without touching a separate work', () => {
     const doc = seedDocument(); doc.tasks = [task(doc, 'architecture'), task(doc, 'monitor')]; doc.dependencies = [];
-    for (let i = 1; i < 300; i++) { const start = addWorkingDays(doc.tasks[0].endDate, i); doc.tasks.push({ ...doc.tasks[0], id: 'chain-' + i, startDate: start, endDate: start }); doc.dependencies.push({ id: 'chain-link-' + i, predecessorId: i === 1 ? 'architecture' : 'chain-' + (i - 1), successorId: 'chain-' + i, type: 'finish_to_start', lagWorkingDays: 0 }); }
+    for (let i = 1; i < 300; i++) { const start = addWorkingDays(doc.tasks[0].endDate, i); doc.tasks.push({ ...doc.tasks[0], status: 'planned', id: 'chain-' + i, startDate: start, endDate: start }); doc.dependencies.push({ id: 'chain-link-' + i, predecessorId: i === 1 ? 'architecture' : 'chain-' + (i - 1), successorId: 'chain-' + i, type: 'finish_to_start', lagWorkingDays: 0 }); }
     const start = performance.now(); const changed = shiftTask(doc, 'architecture', addWorkingDays(doc.tasks[0].startDate, 5));
     expect(workingDifference(task(doc, 'chain-299').startDate, task(changed, 'chain-299').startDate)).toBe(5);
     expect(task(changed, 'monitor')).toEqual(task(doc, 'monitor')); expect(performance.now() - start).toBeLessThan(1000);

@@ -1,3 +1,4 @@
+import { legacyFields } from './legacy-fields';
 import { describe, expect, it } from 'vitest';
 import { clone, isScheduled, RoadmapDocument, SCHEMA_VERSION, Task } from '../src/app/core/model';
 import { seedDocument, initialPreferences } from '../src/app/core/seed';
@@ -14,7 +15,7 @@ describe('backlog schema and legacy migration', () => {
   it('migrates every old task as scheduled with identical IDs, dates, metadata and dependencies; input is untouched', () => {
     const old = legacyDocument(), before = clone(old), migrated = validateDocument(old);
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION); expect(old).toEqual(before);
-    expect(migrated.tasks.map(({ planningState, ...task }) => task)).toEqual(old['tasks']);
+    expect(migrated.tasks.map(legacyFields).map(({ planningState, ...task }) => task)).toEqual(old['tasks']);
     expect(migrated.tasks.every(isScheduled)).toBe(true); expect(migrated.dependencies).toEqual(old['dependencies']);
     const backup = parseBackup(JSON.stringify({ schemaVersion: 1, exportedAt: new Date().toISOString(), document: old, preferences: initialPreferences() }));
     expect(backup.schemaVersion).toBe(SCHEMA_VERSION); expect(backup.document).toEqual(migrated);
@@ -45,7 +46,7 @@ describe('planning state transitions and scheduling with missing dates', () => {
     const returned = returnToBacklog(scheduled, 'backlog-new');
     expect(get(returned, 'backlog-new')).toEqual({ ...standalone(), estimatedWorkingDays: 2 });
     expect(returned.dependencies).toEqual(doc.dependencies);
-    expect(() => scheduleTask(doc, 'backlog-new', { startDate: '2026-10-16', workingDays: 2, teamId: null, workItemId: null })).toThrow(/שישי/);
+    expect(get(scheduleTask(doc, 'backlog-new', { startDate: '2026-10-16', workingDays: 2, teamId: null, workItemId: null }), 'backlog-new').startDate).toBe('2026-10-18');
   });
   it('backlog tasks do not affect the shared work range and stay date-free during task/work dragging', () => {
     const doc = returnToBacklog(seedDocument(), 'testing'), before = clone(get(doc, 'testing')), range = workRange(doc, 'services')!;

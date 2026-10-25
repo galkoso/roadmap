@@ -1,4 +1,5 @@
-import { clone, RoadmapDocument, Task, TeamMember } from './model.js';
+import { editTask } from './scheduler.js';
+import { clone, isScheduled, RoadmapDocument, Task, TeamMember } from './model.js';
 export const membersForTeam = (doc: RoadmapDocument, teamId: string | null): TeamMember[] =>
   doc.members.filter(m => m.teamId === teamId).sort((a, b) => a.order - b.order);
 export function memberLabel(doc: RoadmapDocument, member: TeamMember): string {
@@ -14,7 +15,9 @@ export function validateAssignment(doc: RoadmapDocument, task: Task, assigneeId:
 export function assignTask(document: RoadmapDocument, taskId: string, assigneeId: string | null): RoadmapDocument {
   const doc = clone(document), task = doc.tasks.find(t => t.id === taskId);
   if (!task) throw new Error('המשימה אינה קיימת');
-  validateAssignment(doc, task, assigneeId); task.assigneeId = assigneeId; return doc;
+  validateAssignment(doc, task, assigneeId);
+  if (isScheduled(task)) return editTask(doc, taskId, { assigneeId });
+  task.assigneeId = assigneeId; return doc;
 }
 // Used by both draft editors and immediate team changes; no scheduling takes place.
 export function changeTaskTeam(doc: RoadmapDocument, task: Task, teamId: string | null): boolean {
@@ -36,7 +39,7 @@ export function updateMember(document: RoadmapDocument, id: string, name: string
   Object.assign(member, { name: name.trim(), teamId }); return doc;
 }
 export function removeMember(document: RoadmapDocument, id: string): RoadmapDocument {
-  const doc = clone(document); doc.members = doc.members.filter(m => m.id !== id);
+  const doc = clone(document); doc.attendance = doc.attendance?.filter(entry => entry.memberId !== id); doc.members = doc.members.filter(m => m.id !== id);
   for (const task of doc.tasks) if (task.assigneeId === id) task.assigneeId = null;
   return doc;
 }

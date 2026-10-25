@@ -9,7 +9,7 @@ import { isScheduled, PlanningCandidateSource, PlanningPane, PlanningPreferences
 import { memberLabel, membersForTeam } from '../core/members';
 import {
   assignPlanningTask, capacitySummary, currentPlanningPeriod, effortTotal, emptyPlanningPreferences, memberCapacitySummary, monthlyPlan,
-  movePlanningTask, parseCapacityDays, planningGroups, planningTasks, selectPlanningTask, setCapacity, taskEffort, validPlanningPeriod
+  movePlanningTask, planningGroups, planningTasks, selectPlanningTask, taskEffort, validPlanningPeriod
 } from '../core/planning';
 
 @Component({
@@ -37,8 +37,7 @@ export class PlanningPageComponent {
   readonly candidates = computed(() => planningTasks(this.store.document(), this.team().id, 'candidates', this.candidateSource(), this.period()));
   readonly groups = computed(() => ({ selected: planningGroups(this.store.document(), this.selected()), candidates: planningGroups(this.store.document(), this.candidates()) }));
   readonly unresolved = computed(() => planningTasks(this.store.document(), null, 'selected', 'team', this.period()));
-  readonly error = signal(''); readonly drafts = signal<Record<string, string>>({});
-  readonly hasUnsavedCapacity = computed(() => Object.keys(this.drafts()).length > 0);
+  readonly error = signal('');
   readonly scheduled = isScheduled; readonly effort = taskEffort; readonly total = effortTotal; readonly statusOptions = statuses;
   memberName(id: string): string {
     const member = this.store.document().members.find(member => member.id === id);
@@ -98,29 +97,7 @@ export class PlanningPageComponent {
     plan.taskTeamLinks = [...(plan.taskTeamLinks ?? []).filter(link => link.taskId !== task.id), { taskId: task.id, teamId: this.team().id }];
     this.store.commit(doc, 'צוות התכנון עודכן');
   }
-  private inputKey(memberId: string): string { return JSON.stringify([this.period(), this.team().id, memberId]); }
-  capacityInput(memberId: string): string {
-    const draft = this.drafts()[this.inputKey(memberId)]; if (draft !== undefined) return draft;
-    const capacity = this.plan().teamCapacities.find(capacity => capacity.teamId === this.team().id);
-    const value = capacity?.memberAvailability.find(member => member.memberId === memberId)?.availableWorkingDays;
-    return value?.toString() ?? '';
-  }
-  draftCapacity(event: Event, memberId: string): void {
-    const value = (event.target as HTMLInputElement).value;
-    this.drafts.update(drafts => ({ ...drafts, [this.inputKey(memberId)]: value })); this.error.set('');
-    this.persistCapacity(memberId, false);
-  }
-  saveCapacity(memberId: string): void { this.persistCapacity(memberId, true); }
-  private persistCapacity(memberId: string, reportInvalid: boolean): void {
-    if (!this.store.loaded() || this.store.importing() || this.drafts()[this.inputKey(memberId)] === undefined) return;
-    try {
-      const days = parseCapacityDays(this.capacityInput(memberId));
-      const previous = this.plan().teamCapacities.find(capacity => capacity.teamId === this.team().id)
-        ?.memberAvailability.find(member => member.memberId === memberId)?.availableWorkingDays;
-      if (previous !== days) this.store.commit(setCapacity(this.store.document(), this.team().id, days, memberId, this.period()), 'ימי העבודה עודכנו');
-      this.drafts.update(drafts => { const copy = { ...drafts }; delete copy[this.inputKey(memberId)]; return copy; }); this.error.set('');
-    } catch (error) { if (reportInvalid) this.error.set((error as Error).message); }
-  }
+  focusPerson(velocityMemberId: string): void { this.store.setPreferences({ velocityMemberId }); }
   edit(task: Task, schedule = false): void {
     if (isScheduled(task)) this.showInRoadmap(task.id);
     else {
@@ -129,7 +106,7 @@ export class PlanningPageComponent {
     }
   }
   showInRoadmap(id: string): void { this.store.focusTaskId.set(id); void this.router.navigate(['/roadmap'], { queryParams: { task: id } }); }
-  dirty(): boolean { return this.hasUnsavedCapacity(); }
+  dirty(): boolean { return false; }
   canDeactivate(): boolean {
     return this.editor.canDeactivate() && (!this.dirty() || confirm('יש ימי עבודה שלא נשמרו. לעבור לעמוד אחר ולבטל אותם?'));
   }

@@ -1,14 +1,15 @@
 import { Backup, isScheduled, RoadmapDocument, SCHEMA_VERSION, ViewPreferences } from './model.js';
-import { addWorkingDays, epoch, validateRange } from './dates.js';
+import { addWorkingDays, duration, epoch, validateRange } from './dates.js';
 import { currentPlanningPeriod, validCapacityDays, validPlanningPeriod } from './planning.js';
 import { topological } from './scheduler.js';
+import { validateAttendance } from './availability.js';
 function assert(test: unknown, message = 'מבנה קובץ הגיבוי אינו תקין'): asserts test { if (!test) throw new Error(message); }
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === 'string';
 const order = (value: unknown): boolean => Number.isSafeInteger(value) && Number(value) >= 0;
 export function validateDocument(value: unknown): RoadmapDocument {
   assert(record(value));
-  assert([1, 2, 3, 4, 5, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1–6');
+  assert([1, 2, 3, 4, 5, 6, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת. נתמכות גרסאות 1–7');
   if (value['schemaVersion'] === 1) {
     assert(Array.isArray(value['tasks']));
     for (const task of value['tasks']) assert(record(task) && text(task['teamId']) && text(task['workItemId']) && text(task['startDate']) && text(task['endDate']) && task['planningState'] === undefined, 'נתונים ישנים אינם תקינים; לא שונו ולא נמחקו');
@@ -65,8 +66,22 @@ export function validateDocument(value: unknown): RoadmapDocument {
       }
       delete plan['taskMemberLinks'];
     }
-    migrated['schemaVersion'] = SCHEMA_VERSION;
+    migrated['schemaVersion'] = 6;
     return validateDocument(migrated);
+  }
+  if (value['schemaVersion'] === 6) {
+    const migrated = structuredClone(value);
+    migrated['schemaVersion'] = SCHEMA_VERSION;
+    const doc = validateDocument(migrated);
+    doc.attendance = [];
+    doc.legacyCapacityArchive = structuredClone(doc.planning.plans.map(plan => ({ period: plan.period, teamCapacities: plan.teamCapacities })));
+    doc.calendarMigrationNote = 'הזמינות מחושבת כעת לפי נוכחות בימים ראשון–חמישי. הערכים הידניים נשמרו בארכיון; לא ניתן להסיק מהם תאריכי היעדרות וייתכנו הבדלים בסכומים.';
+    for (const task of doc.tasks.filter(isScheduled)) {
+      task.requestedStartDate = task.startDate;
+      task.effortWorkingDays = duration(task.startDate, task.endDate);
+      task.effortProvenance = 'legacy-global-calendar';
+    }
+    return doc;
   }
   assert(order(value['revision']));
   const ids = new Set<string>();
@@ -100,8 +115,22 @@ export function validateDocument(value: unknown): RoadmapDocument {
     assert(t.assigneeId === undefined || t.assigneeId === null || (text(t.assigneeId) && doc.members.some(m => m.id === t.assigneeId && (t.teamId === null || m.teamId === t.teamId))), 'אחראי אינו קיים או אינו שייך לצוות המשימה');
     assert(t.workItemId === null || doc.workItems.some(w => w.id === t.workItemId && (w.teamId === undefined || w.teamId === t.teamId)), 'הכותרת אינה שייכת לצוות המשימה');
     assert(t.planningState === 'scheduled' || t.planningState === 'backlog', 'מצב תכנון אינו תקין');
-    if (isScheduled(t)) { assert(text(t.startDate) && text(t.endDate)); validateRange(t.startDate, t.endDate); }
+    if (isScheduled(t)) {
+      assert(text(t.startDate) && text(t.endDate)); validateRange(t.startDate, t.endDate);
+      if (t.requestedStartDate !== undefined) { assert(text(t.requestedStartDate)); epoch(t.requestedStartDate); }
+      assert(t.effortWorkingDays === undefined || (Number.isSafeInteger(t.effortWorkingDays) && t.effortWorkingDays > 0 && t.effortWorkingDays <= 10000), 'היקף עבודה אינו תקין');
+      assert(t.scheduleIssue === undefined || text(t.scheduleIssue), 'מצב שיבוץ אינו תקין');
+      assert(t.effortProvenance === undefined || t.effortProvenance === 'legacy-global-calendar');
+    }
     else assert(t.startDate === undefined && t.endDate === undefined, 'פריט בקלוג אינו יכול להכיל תאריכי דמה');
+  }
+  assert(doc.attendance === undefined || (Array.isArray(doc.attendance) && doc.attendance.length <= 100000), 'רשומות נוכחות אינן תקינות');
+  const attendanceKeys = new Set<string>();
+  for (const entry of doc.attendance ?? []) {
+    assert(record(entry) && text(entry.memberId) && text(entry.date), 'רשומת נוכחות אינה תקינה');
+    validateAttendance(doc, entry);
+    const key = JSON.stringify([entry.memberId, entry.date]);
+    assert(!attendanceKeys.has(key), 'רשומת נוכחות כפולה'); attendanceKeys.add(key);
   }
   const planningState = value['planning']; assert(record(planningState) && Array.isArray(planningState['plans']) && planningState['plans'].length <= 10000, 'מצב התכנון החודשי אינו תקין');
   const periods = new Set<string>(), allSelected = new Set<string>();
@@ -143,7 +172,7 @@ export function validateDocument(value: unknown): RoadmapDocument {
     // Imported schedules must satisfy all finish-to-start constraints.
     if (isScheduled(s)) {
       assert(isScheduled(p), 'משימה משובצת תלויה בפריט בקלוג ללא תאריכים: ' + p.title);
-      assert(s.startDate >= addWorkingDays(p.endDate, 1 + d.lagWorkingDays), 'תכנון מיובא מפר קשרי תלות');
+      assert(s.status === 'completed' || s.scheduleIssue || s.startDate >= addWorkingDays(p.endDate, 1 + d.lagWorkingDays), 'תכנון מיובא מפר קשרי תלות');
     }
   }
   return structuredClone(doc);
@@ -182,6 +211,7 @@ export function validatePreferences(value: unknown): ViewPreferences {
       assert(!keys.has(key), 'קבוצת תכנון כפולה'); keys.add(key);
     }
   }
+  assert(value['velocityMemberId'] === undefined || value['velocityMemberId'] === null || text(value['velocityMemberId']));
   assert(Array.isArray(value['collapsed']) && value['collapsed'].every(text));
   const preferences = structuredClone(value) as unknown as ViewPreferences;
   if (preferences.planning) preferences.planning.collapsedGroups = preferences.planning.collapsedGroups.map(group => ({ ...group, period: group.period ?? currentPlanningPeriod() }));
@@ -190,7 +220,7 @@ export function validatePreferences(value: unknown): ViewPreferences {
 export function parseBackup(raw: string): Backup {
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new Error('הקובץ אינו JSON תקין'); }
-  assert(record(value)); assert([1, 2, 3, 4, 5, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת');
+  assert(record(value)); assert([1, 2, 3, 4, 5, 6, SCHEMA_VERSION].some(version => value['schemaVersion'] === version), 'גרסת הגיבוי אינה נתמכת');
   assert(record(value['document']) && value['document']['schemaVersion'] === value['schemaVersion'], 'גרסת המסמך אינה תואמת לגרסת הגיבוי');
   assert(text(value['exportedAt']) && Number.isFinite(Date.parse(value['exportedAt'])));
   const document = validateDocument(value['document']), preferences = validatePreferences(value['preferences']);

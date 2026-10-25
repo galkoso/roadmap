@@ -6,8 +6,11 @@ interface TaskBase {
   id: string; workItemId: string | null; teamId: string | null; title: string;
   assigneeId?: string | null; color: string; status: TaskStatus; notes: string; order: number; estimatedWorkingDays?: number;
 }
-export interface ScheduledTask extends TaskBase { planningState: 'scheduled'; startDate: string; endDate: string }
-export interface BacklogTask extends TaskBase { planningState: 'backlog'; startDate?: never; endDate?: never }
+export interface ScheduledTask extends TaskBase {
+  planningState: 'scheduled'; startDate: string; endDate: string; requestedStartDate?: string;
+  effortWorkingDays?: number; effortProvenance?: 'legacy-global-calendar'; scheduleIssue?: string;
+}
+export interface BacklogTask extends TaskBase { planningState: 'backlog'; startDate?: never; endDate?: never; requestedStartDate?: never; effortWorkingDays?: never }
 export type Task = ScheduledTask | BacklogTask;
 export const isScheduled = (task: Task): task is ScheduledTask => task.planningState === 'scheduled';
 export interface Dependency { id: string; predecessorId: string; successorId: string; type: 'finish_to_start'; lagWorkingDays: number }
@@ -29,18 +32,23 @@ export interface PlanningPreferences {
   collapsedGroups: { teamId: string; pane: PlanningPane; workItemId: string | null; period?: string }[];
   expandedTeamIds: string[];
 }
+export interface AttendanceException { memberId: string; date: string; status: 'present' | 'absent' }
 export interface RoadmapDocument {
+  attendance?: AttendanceException[];
+  legacyCapacityArchive?: { period: string; teamCapacities: TeamCapacity[] }[];
+  calendarMigrationNote?: string;
   schemaVersion: number; revision: number; teams: Team[]; members: TeamMember[]; workItems: WorkItem[]; tasks: Task[]; dependencies: Dependency[];
   planning: PlanningState;
 }
 export interface ViewPreferences {
+  velocityMemberId?: string | null;
   mode: 'weeks' | 'months' | 'quarters'; dayWidth: number; center: string; collapsed: string[]; scrollLeft?: number;
   timelineAnchor?: string; scrollTop?: number; grouping?: 'work' | 'people'; peopleCollapsed?: string[];
   backlog?: { mode: 'teams' | 'people' | 'list'; collapsed: string[]; peopleCollapsed?: string[]; scrollTop: number };
   planning?: PlanningPreferences;
 }
 export interface Backup { schemaVersion: number; exportedAt: string; document: RoadmapDocument; preferences: ViewPreferences }
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 export const statuses: Record<TaskStatus, string> = { planned: 'מתוכננת', in_progress: 'בביצוע', completed: 'הושלמה' };
 export const palette = ['#3975d5', '#8c62c7', '#239b87', '#de9950', '#d66883', '#64748b'];
 export const uid = (): string => crypto.randomUUID();

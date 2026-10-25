@@ -26,7 +26,7 @@ it('selection and capacities participate in Undo/Redo while preserving task reco
   await vi.waitFor(() => expect(store.saveStatus()).toBe('נשמר'));
   store.undo(); expect(monthlyPlan(store.document()).teamCapacities).toEqual([]); expect(monthlyPlan(store.document()).selectedTaskIds).toEqual(['idea']);
   store.undo(); expect(monthlyPlan(store.document()).selectedTaskIds).toEqual([]); expect(store.document().tasks).toEqual(tasks);
-  store.redo(); store.redo(); expect(capacitySummary(store.document(), 'team-a').available).toBe(7.5);
+  store.redo(); store.redo(); expect(capacitySummary(store.document(), 'team-a').available).toBe(21);
   await vi.waitFor(() => expect(store.saveStatus()).toBe('נשמר'));
   write.mockRejectedValue(new Error('quota full'));
   store.commit(selectPlanningTask(store.document(), 'idea', false));
@@ -44,4 +44,22 @@ it('every editing flow cleans invalid live planning references and Undo restores
   const doc = clone(store.document()); doc.tasks = doc.tasks.filter(task => task.id !== 'idea'); store.commit(doc);
   expect(monthlyPlan(store.document()).selectedTaskIds).toEqual([]);
   store.undo(); expect(monthlyPlan(store.document()).selectedTaskIds).toEqual(['idea']);
+});
+
+it('undoes and redoes attendance, derived capacity and dependent schedules as a single revision-safe action', async () => {
+  const { changeAttendance, scheduleTask } = await import('../src/app/core/scheduler');
+  const saved = fixture(); saved.document.dependencies = [];
+  saved.document = scheduleTask(saved.document, 'idea', { startDate: '2026-10-25', workingDays: 2, teamId: 'team-a', workItemId: null });
+  vi.spyOn(RoadmapStorage.prototype, 'load').mockResolvedValue(clone(saved));
+  vi.spyOn(RoadmapStorage.prototype, 'save').mockResolvedValue(1);
+  const store = new RoadmapStore(); await vi.waitFor(() => expect(store.loaded()).toBe(true));
+  const before = clone(store.document());
+  store.commit(changeAttendance(store.document(), { memberId: 'person', date: '2026-10-26', status: 'absent' }).document);
+  expect(store.document().tasks.find(task => task.id === 'idea')?.endDate).toBe('2026-10-27');
+  expect(capacitySummary(store.document(), 'team-a', '2026-10').available).toBe(20);
+  store.undo(); expect(store.document().tasks).toEqual(before.tasks); expect(store.document().attendance).toEqual(before.attendance);
+  expect(capacitySummary(store.document(), 'team-a', '2026-10').available).toBe(21);
+  store.redo(); expect(store.document().tasks.find(task => task.id === 'idea')?.endDate).toBe('2026-10-27');
+  expect(store.document().attendance).toEqual([{ memberId: 'person', date: '2026-10-26', status: 'absent' }]);
+  await vi.waitFor(() => expect(store.saveStatus()).toBe('נשמר'));
 });

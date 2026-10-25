@@ -1,3 +1,4 @@
+import { requiredEffort } from '../core/availability';
 import { AfterViewInit, ChangeDetectorRef, ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, input, OnDestroy, output, signal, ViewChild } from '@angular/core';
 import { AssigneeFieldComponent } from './assignee-field.component';
 import { groupByPeople, personKey } from '../core/members';
@@ -281,7 +282,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   barWidth(start: string, end: string): number { return Math.max(8, Math.min(this.width(), this.x(addDays(end, 1))) - Math.max(0, this.x(start)) - 4); }
   intersects(start: string, end: string): boolean { return end >= this.start() && start < addDays(this.start(), this.span()); }
   shortDate(date: string): string { return `${date.slice(8)}.${date.slice(5, 7)}`; }
-  barLabel(row: Row): string { return `${row.task?.title ?? row.work?.title}: ${formatDate(row.start!)} – ${formatDate(row.end!)}${row.task ? ' · ' + duration(row.start!, row.end!) + ' ימי עבודה' : ''}`; }
+  barLabel(row: Row): string { return `${row.task?.title ?? row.work?.title}: ${formatDate(row.start!)} – ${formatDate(row.end!)}${row.task ? ' · ' + requiredEffort(row.task) + ' ימי עבודה · ' + (daysBetween(row.start!, row.end!) + 1) + ' ימים קלנדריים · ' + (row.task.assigneeId ? this.store.document().members.find(m => m.id === row.task!.assigneeId)?.name : 'ללא אחראי — זמינות אישית לא הוחלה') + (row.task.requestedStartDate && row.task.requestedStartDate !== row.start ? ' · התחלה מבוקשת ' + formatDate(row.task.requestedStartDate) : '') + (row.task.scheduleIssue ? ' · ' + row.task.scheduleIssue : '') : ''}`; }
   collapsedKeys(): string[] { const p = this.store.preferences(); return p.grouping === 'people' ? p.peopleCollapsed ?? [] : p.collapsed; }
   collapsed(key: string): boolean { return this.collapsedKeys().includes(key); }
   toggle(key: string): void {
@@ -301,7 +302,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
     const drag = this.drag; if (!drag || event.pointerId !== drag.pointer) return;
     const delta = Math.round((event.clientX - drag.x) / this.store.preferences().dayWidth);
     if (Math.abs(event.clientX - drag.x) < 4 && !drag.moved) return; drag.moved = true;
-    const date = nextWorkingDay(addDays(drag.kind === 'end' ? drag.end : drag.start, delta));
+    const date = addDays(drag.kind === 'end' ? drag.end : drag.start, delta);
     try {
       if (drag.kind === 'work') drag.next = shiftWork(drag.base, drag.id, date);
       else if (drag.kind === 'move') drag.next = shiftTask(drag.base, drag.id, date);
@@ -310,11 +311,11 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
       if (drag.kind === 'work') {
         const count = new Set(drag.next.tasks.filter(isScheduled).filter(t => t.workItemId === drag.id).map(t => t.teamId)).size;
         const range = workRange(drag.next, drag.id)!;
-        this.store.notice.set(`הזזת כל משימות העבודה · ${count} צוותים · ${formatDate(range.startDate)}`);
+        this.store.notice.set(`הזזת עוגני ההתחלה; ההיקף נשמר והסיום תלוי בלוח האישי · ${count} צוותים · ${formatDate(range.startDate)}`);
       } else {
         const task = drag.next.tasks.find(t => t.id === drag.id)! as ScheduledTask;
         const changed = drag.next.tasks.filter(t => t.id !== drag.id && drag.base.tasks.some(o => o.id === t.id && (o.startDate !== t.startDate || o.endDate !== t.endDate))).map(t => t.title);
-        this.store.notice.set(`${formatDate(task.startDate)} – ${formatDate(task.endDate)} · ${duration(task.startDate, task.endDate)} ימי עבודה${task.startDate !== date && drag.kind !== 'end' ? ' · הוצמד למועד חוקי' : ''}${changed.length ? ' · עודכנו: ' + changed.join(', ') : ''}`);
+        this.store.notice.set(`${formatDate(task.startDate)} – ${formatDate(task.endDate)} · ${requiredEffort(task)} ימי עבודה${task.startDate !== date && drag.kind !== 'end' ? ' · הוצמד למועד חוקי' : ''}${changed.length ? ' · עודכנו: ' + changed.join(', ') : ''}`);
       }
     } catch (error) { this.store.notice.set(error instanceof Error ? error.message : 'שינוי אינו תקין'); }
   }
