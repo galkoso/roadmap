@@ -60,8 +60,13 @@ test('members, scoped assignment, keyboard collapse, immediate person projection
   await expect(page.locator('.person-title').filter({ hasText: a.id.slice(0, 8) })).toContainText('אין משימות בציר');
   await page.screenshot({ path: 'test-results/members-roadmap.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 900 });
-  await expect(page.locator('.names-header')).toHaveCSS('width', '300px');
-  await expect(page.getByLabel('אחראי למשימה ' + item.title)).toBeEnabled();
+  await expect.poll(async () => {
+    const names = await page.locator('.names-header').boundingBox(), chart = await viewport.boundingBox();
+    return chart!.width - names!.width;
+  }).toBeGreaterThanOrEqual(120);
+  await page.locator('.task-name').filter({ hasText: item.title }).click();
+  await expect(editor.getByLabel('אחראי למשימה ' + item.title)).toBeVisible();
+  await expect(editor.getByLabel('אחראי למשימה ' + item.title)).toBeEnabled();
   await page.screenshot({ path: 'test-results/members-roadmap-narrow.png', fullPage: true });
 });
 test('backlog assignment, scheduling, reveal and return preserve metadata', async ({ page }) => {
