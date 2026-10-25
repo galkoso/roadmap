@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { AssigneeFieldComponent } from './assignee-field.component';
 import { BacklogTaskDialogComponent } from './backlog-task-dialog.component';
 import { nextWorkingDay } from '../core/dates';
+import { Session } from '../core/session';
 import { RoadmapStore } from '../core/store';
 import { isScheduled, PlanningCandidateSource, PlanningPane, PlanningPreferences, statuses, Task } from '../core/model';
 import { memberLabel, membersForTeam } from '../core/members';
@@ -17,6 +18,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush, templateUrl: './planning-page.component.html'
 })
 export class PlanningPageComponent {
+  readonly session = inject(Session);
   readonly store = inject(RoadmapStore); private readonly router = inject(Router);
   @ViewChild(BacklogTaskDialogComponent, { static: true }) editor!: BacklogTaskDialogComponent;
   readonly preferences = computed(() => this.store.preferences().planning ?? emptyPlanningPreferences());

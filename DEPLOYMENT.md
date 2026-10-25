@@ -14,10 +14,10 @@ you push them. Build failures keep the last successful website available.
 deployments; their shared database requires separate Preview environment settings.
 Deployment status is available at <https://vercel.com/galkoso/roadmap>.
 
-The hosted app uses one shared roadmap. Visitors sign in with the shared password before they can read, edit, delete,
+The hosted app uses one shared roadmap. Visitors sign in with one of two passwords before they can read, edit, delete,
 or import a replacement. No username or account is required. Login sessions last
-seven days and use a signed HttpOnly cookie; the data API rejects unauthenticated
-requests. Use the navigation bar’s logout button to clear the browser session. Each browser keeps its
+seven days and use a signed HttpOnly cookie containing the access role; the data API rejects unauthenticated
+requests. The owner login shows the Backlog page. The member login hides its links and redirects direct Backlog URLs to Velocity. Monthly planning and shared data remain available to both logins; this is page visibility, not data isolation. The previous shared password and sessions are no longer accepted. Use the navigation bar’s logout button to clear the browser session. Each browser keeps its
 own zoom, filters, and collapsed groups. Other visitors see saved changes within
 about 10 seconds while no editor is open. Concurrent saves use a revision check:
 a stale save is rejected and its unsaved changes remain available for export.

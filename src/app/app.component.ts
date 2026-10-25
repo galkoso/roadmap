@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { Session } from './core/session';
 import { RoadmapStore } from './core/store';
 import { exportBackup } from './core/validation';
 import { today } from './core/dates';
@@ -9,7 +10,7 @@ import { currentPlanningPeriod, emptyPlanningPreferences, validPlanningPeriod } 
   selector: 'app-roadmap-shell', standalone: true, imports: [FormsModule, RouterLink, RouterLinkActive, RouterOutlet], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="app-shell" dir="rtl">
-      <nav class="page-navigation" aria-label="ניווט ראשי"><a routerLink="/roadmap" routerLinkActive="current-page" ariaCurrentWhenActive="page">Roadmap</a><a routerLink="/backlog" routerLinkActive="current-page" ariaCurrentWhenActive="page">בקלוג</a><a routerLink="/planning" routerLinkActive="current-page" ariaCurrentWhenActive="page">תכנון חודשי</a><a routerLink="/velocity" routerLinkActive="current-page" ariaCurrentWhenActive="page">Velocity</a>
+      <nav class="page-navigation" aria-label="ניווט ראשי"><a routerLink="/roadmap" routerLinkActive="current-page" ariaCurrentWhenActive="page">Roadmap</a>@if (session.canViewBacklog()) { <a routerLink="/backlog" routerLinkActive="current-page" ariaCurrentWhenActive="page">בקלוג</a> }<a routerLink="/planning" routerLinkActive="current-page" ariaCurrentWhenActive="page">תכנון חודשי</a><a routerLink="/velocity" routerLinkActive="current-page" ariaCurrentWhenActive="page">Velocity</a>
         <div class="navigation-actions">
           <div class="website-period" role="group" aria-label="תקופת האתר">
             <label>חודש<select aria-label="חודש" [ngModel]="period().slice(5)" (ngModelChange)="selectPeriod(period().slice(0, 4) + '-' + $event)" [disabled]="!store.loaded()">
@@ -27,6 +28,7 @@ import { currentPlanningPeriod, emptyPlanningPreferences, validPlanningPeriod } 
   `
 })
 export class RoadmapShellComponent {
+  readonly session = inject(Session);
   readonly logout = output<void>();
   readonly store = inject(RoadmapStore);
   readonly period = computed(() => this.store.preferences().planning?.activePeriod ?? currentPlanningPeriod());
@@ -76,19 +78,18 @@ export class RoadmapShellComponent {
   `
 })
 export class AppComponent {
-  readonly authenticated = signal(false);
+  readonly session = inject(Session);
+  readonly authenticated = this.session.authenticated;
   readonly checking = signal(true);
   readonly busy = signal(false);
   readonly error = signal('');
   password = '';
   constructor() { void this.checkSession(); }
   @HostListener('window:roadmap-auth-required')
-  lock(): void { this.authenticated.set(false); this.error.set('פג תוקף ההתחברות. הזינו סיסמה כדי להמשיך.'); }
+  lock(): void { this.session.apply({ authenticated: false }); this.error.set('פג תוקף ההתחברות. הזינו סיסמה כדי להמשיך.'); }
   private async checkSession(): Promise<void> {
     try {
-      const response = await fetch('/api/login', { cache: 'no-store', credentials: 'same-origin' });
-      if (!response.ok) throw new Error();
-      this.authenticated.set((await response.json()).authenticated === true);
+      await this.session.check();
     } catch { this.error.set('לא ניתן להתחבר לשרת. נסו שוב.'); }
     finally { this.checking.set(false); }
   }
@@ -103,8 +104,10 @@ export class AppComponent {
         this.error.set(response.status === 401 ? 'הסיסמה שגויה. נסו שוב.' : response.status === 429 ? 'יותר מדי ניסיונות. נסו שוב בעוד דקה.' : 'לא ניתן להתחבר לשרת. נסו שוב.');
         return;
       }
-      if ((await response.json()).authenticated !== true) throw new Error();
-      this.password = ''; this.authenticated.set(true);
+      const session = await response.json();
+      if (session.authenticated !== true) throw new Error();
+      this.password = '';
+      location.reload();
     } catch { this.error.set('לא ניתן להתחבר לשרת. נסו שוב.'); }
     finally { this.busy.set(false); }
   }

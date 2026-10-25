@@ -31,7 +31,7 @@
         } @empty { <p class="backlog-empty">@if (pane.key === 'selected') { עדיין לא נבחרו משימות לצוות בחודש הנבחר. } @else { אין משימות בקלוג נוספות לבחירה במקור שנבחר. משימות שכבר תוכננו לחודש אחר אינן מוצעות שוב. }</p> }
       </section> }
     </div>
-    <p class="field-hint planning-note">הבחירה והזמינות נשמרות לפי חודש ושנה. הוספה לתכנון אינה משנה את שיוך הצוות המקורי ב־<a routerLink="/backlog" aria-label="פתיחת הבקלוג המקורי">בקלוג</a> או את תאריכי ה־Roadmap. האחראי הוא אותו אחראי בכל העמודים; ימי העבודה נשמרים אוטומטית.</p>
+    <p class="field-hint planning-note">הבחירה והזמינות נשמרות לפי חודש ושנה. הוספה לתכנון אינה משנה את שיוך הצוות המקורי ב־@if (session.canViewBacklog()) { <a routerLink="/backlog" aria-label="פתיחת הבקלוג המקורי">בקלוג</a> } @else { <span>בקלוג</span> } או את תאריכי ה־Roadmap. האחראי הוא אותו אחראי בכל העמודים; ימי העבודה נשמרים אוטומטית.</p>
     <div class="notice" role="status">{{ store.notice() }}</div>
   } @else { <div class="loading">{{ store.saveStatus() }}</div> }
   <app-backlog-task-dialog/>

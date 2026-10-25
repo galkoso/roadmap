@@ -98,7 +98,7 @@ describe('shared server API', () => {
   beforeEach(async () => {
     vi.stubEnv('ROADMAP_SESSION_SECRET', 'shared-api-tests');
     const result = response();
-    await loginHandler({ method: 'POST', headers: { 'content-type': 'application/json' }, body: { password: 'ztube123ztube123' } }, result);
+    await loginHandler({ method: 'POST', headers: { 'content-type': 'application/json' }, body: { password: 'galko' } }, result);
     sessionCookie = result.headers['Set-Cookie'].split(';')[0];
   });
   it('validates data and uses atomic compare-and-set for new and existing documents', async () => {
