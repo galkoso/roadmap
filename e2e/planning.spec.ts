@@ -26,12 +26,12 @@ async function period(page: Page, value: string) {
 }
 async function availability(page: Page, id: string, value: string) {
   const person = page.locator(`[data-member="${id}"]`), month = `${await page.getByLabel('שנת תכנון', { exact: true }).inputValue()}-${await page.getByLabel('חודש תכנון', { exact: true }).inputValue()}`;
-  await person.getByRole('spinbutton').fill(value); await person.getByRole('button', { name: 'שמירה', exact: true }).click();
+  await person.getByRole('spinbutton').fill(value);
   await expect.poll(async () => (await stored(page)).document.planning.plans.find((plan: any) => plan.period === month)?.teamCapacities.flatMap((capacity: any) => capacity.memberAvailability).find((member: any) => member.memberId === id)?.availableWorkingDays).toBe(Number(value));
   await saved(page);
 }
 async function add(page: Page, id: string) { await row(page, 'candidates', id).getByRole('button', { name: '＋ לתכנון', exact: true }).click(); await expect(row(page, 'selected', id)).toBeVisible(); }
-async function assign(page: Page, id: string, member: string) { await row(page, 'selected', id).getByRole('combobox', { name: 'אחראי בתכנון', exact: false }).selectOption(member); }
+async function assign(page: Page, id: string, member: string) { await row(page, 'selected', id).getByRole('combobox', { name: 'אחראי למשימה', exact: false }).selectOption(member); }
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/planning'); await saved(page);
@@ -62,36 +62,43 @@ test('month and year isolate tasks and people availability, persist on reload an
   await page.goForward(); await expect(page).toHaveURL(/\/backlog$/); await expect(page.getByTestId('backlog-row-a')).toBeVisible();
 });
 
-test('team total comes from people; assignment and reassignment update personal balances without changing task assignees', async ({ page }) => {
+test('team total comes from people; assignment and reassignment update personal balances using the same task assignees', async ({ page }) => {
   await expect(page.getByLabel('ימי עבודה זמינים לצוות', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.planning-person button')).toHaveCount(0);
   await availability(page, 'm-a', '15'); await availability(page, 'm-b', '10'); await expect(page.getByTestId('planning-available')).toContainText('25');
   const tasks = (await stored(page)).document.tasks; await add(page, 'a'); await add(page, 'b'); await assign(page, 'a', 'm-a'); await assign(page, 'b', 'm-a');
   await expect(page.getByTestId('remaining-m-a')).toHaveText('7 ימי עבודה'); await expect(page.getByTestId('remaining-m-b')).toHaveText('10 ימי עבודה');
   await assign(page, 'a', 'm-b'); await expect(page.getByTestId('remaining-m-a')).toHaveText('12 ימי עבודה'); await expect(page.getByTestId('remaining-m-b')).toHaveText('5 ימי עבודה');
   await availability(page, 'm-b', '4.5'); await expect(page.getByTestId('remaining-m-b')).toHaveText('-0.5 ימי עבודה'); await expect(page.locator('[data-member="m-b"]')).toContainText('חריגה של 0.5');
   await expect(page.getByTestId('planning-available')).toContainText('19.5'); await expect(page.getByTestId('planning-remaining')).toContainText('11.5');
-  expect((await stored(page)).document.tasks).toEqual(tasks);
-  const input = page.locator('[data-member="m-a"] input'); await input.fill(''); await page.locator('[data-member="m-a"] button').click(); await expect(page.getByRole('alert')).toContainText('יש להזין');
+  expect((await stored(page)).document.tasks).toEqual(tasks.map((t: any) => ({ ...t, assigneeId: t.id === 'a' ? 'm-b' : t.id === 'b' ? 'm-a' : t.assigneeId })));
+  const input = page.locator('[data-member="m-a"] input'); await input.fill(''); await input.blur(); await expect(page.getByRole('alert')).toContainText('יש להזין');
   expect((await stored(page)).document.planning.plans[0].teamCapacities[0].memberAvailability.find((m: any) => m.memberId === 'm-a').availableWorkingDays).toBe(15);
-  await input.fill('15'); await page.locator('[data-member="m-a"] button').click();
+  await input.fill('15'); await input.blur();
+  await page.getByRole('link', { name: 'בקלוג', exact: true }).click();
+  const sharedAssignee = page.getByTestId('backlog-row-a').getByLabel('אחראי למשימה משימה ראשונה');
+  await expect(sharedAssignee).toHaveValue('m-b'); await sharedAssignee.selectOption('m-a'); await saved(page);
+  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click();
+  await expect(row(page, 'selected', 'a').getByLabel('אחראי למשימה משימה ראשונה')).toHaveValue('m-a');
+  await expect(page.getByTestId('remaining-m-a')).toHaveText('7 ימי עבודה');
   await page.getByRole('button', { name: 'צוות ג׳', exact: true }).click(); await expect(page.getByText('אין אנשים בצוות.', { exact: false })).toBeVisible();
 });
 
-test('unassigned backlog selection and per-person assignment do not change the original team or assignee', async ({ page }) => {
+test('unassigned backlog selection and per-person assignment reuse the original assignee without changing the team', async ({ page }) => {
   await availability(page, 'm-a', '6'); await page.getByLabel('מקור המשימות לבחירה').selectOption('unassigned'); await expect(row(page, 'candidates', 'a')).toHaveCount(0);
   await add(page, 'no-team'); await assign(page, 'no-team', 'm-a'); await expect(page.getByTestId('remaining-m-a')).toHaveText('5 ימי עבודה');
   await page.getByRole('link', { name: 'בקלוג', exact: true }).click(); await expect(page.getByTestId('backlog-row-no-team').getByLabel('צוות לפריט משימה ללא צוות').locator('option:checked')).toHaveText('ללא צוות');
   await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await page.getByRole('button', { name: 'צוות ב׳', exact: true }).click(); await expect(row(page, 'selected', 'no-team')).toHaveCount(0); await expect(row(page, 'candidates', 'no-team')).toHaveCount(0);
   await page.getByRole('button', { name: 'צוות א׳', exact: true }).click(); await row(page, 'selected', 'no-team').getByRole('button', { name: /^הסרה מהתכנון/ }).click();
   await expect(row(page, 'candidates', 'no-team')).toBeVisible(); await expect(page.getByTestId('remaining-m-a')).toHaveText('6 ימי עבודה');
-  const task = (await stored(page)).document.tasks.find((t: any) => t.id === 'no-team'); expect(task).toMatchObject({ teamId: null, assigneeId: null, planningState: 'backlog' });
+  const task = (await stored(page)).document.tasks.find((t: any) => t.id === 'no-team'); expect(task).toMatchObject({ teamId: null, assigneeId: 'm-a', planningState: 'backlog' });
 });
 
 test('moving a task changes its planning month only and keeps its person assignment', async ({ page }) => {
   await availability(page, 'm-a', '10'); await add(page, 'a'); await assign(page, 'a', 'm-a'); await saved(page); const tasks = (await stored(page)).document.tasks;
   const monthInput = row(page, 'selected', 'a').getByLabel('חודש תכנון משימה ראשונה', { exact: true }); await monthInput.fill(NOV); await page.keyboard.press('Tab');
   await expect(row(page, 'selected', 'a')).toHaveCount(0); await expect(page.getByTestId('remaining-m-a')).toHaveText('10 ימי עבודה');
-  await period(page, NOV); await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(row(page, 'selected', 'a').getByLabel('אחראי בתכנון משימה ראשונה')).toHaveValue('m-a');
+  await period(page, NOV); await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(row(page, 'selected', 'a').getByLabel('אחראי למשימה משימה ראשונה')).toHaveValue('m-a');
   await expect(page.getByTestId('remaining-m-a')).toHaveText('טרם הוזנה זמינות'); await availability(page, 'm-a', '6'); await expect(page.getByTestId('remaining-m-a')).toHaveText('1 ימי עבודה');
   expect((await stored(page)).document.tasks).toEqual(tasks);
 });
@@ -103,16 +110,16 @@ test('known effort, missing effort, independent groups and per-month collapse re
   await candidateToggle.click(); await expect(selectedToggle).toHaveAttribute('aria-expanded', 'true');
   await row(page, 'selected', 'unknown').getByRole('button', { name: 'השלמת היקף', exact: true }).click();
   const editor = page.getByRole('dialog', { name: 'פריט לבקלוג', exact: true }); await editor.getByLabel('משך משוער בימי עבודה').fill('12'); await editor.getByRole('button', { name: 'שמירת פריט', exact: true }).click();
-  await expect(page.getByTestId('remaining-m-a')).toHaveText('-2 ימי עבודה'); await expect(page.getByTestId('planning-effort')).toContainText('17');
+  await expect(page.getByTestId('remaining-m-a')).toHaveText('-7 ימי עבודה'); await expect(page.getByTestId('planning-effort')).toContainText('17');
   await selectedToggle.click(); await period(page, NOV); await expect(pane(page, 'candidates').locator('[data-work="work-a"] .planning-work-toggle')).toHaveAttribute('aria-expanded', 'true');
   await period(page, OCT); await expect(selectedToggle).toHaveAttribute('aria-expanded', 'false'); await expect(candidateToggle).toHaveAttribute('aria-expanded', 'false');
 });
 
 test('person assignments, capacities and task selections participate in Undo/Redo', async ({ page }) => {
-  await availability(page, 'm-a', '8'); await add(page, 'a'); await assign(page, 'a', 'm-a'); await expect(page.getByTestId('remaining-m-a')).toHaveText('3 ימי עבודה');
+  await availability(page, 'm-a', '8'); await add(page, 'b'); await assign(page, 'b', 'm-a'); await expect(page.getByTestId('remaining-m-a')).toHaveText('5 ימי עבודה');
   await page.getByRole('heading', { level: 1 }).click(); await page.keyboard.press('Control+z'); await expect(page.getByTestId('remaining-m-a')).toHaveText('8 ימי עבודה');
-  await page.keyboard.press('Control+z'); await expect(row(page, 'selected', 'a')).toHaveCount(0); await page.keyboard.press('Control+Shift+z'); await page.keyboard.press('Control+Shift+z');
-  await expect(row(page, 'selected', 'a')).toBeVisible(); await expect(page.getByTestId('remaining-m-a')).toHaveText('3 ימי עבודה');
+  await page.keyboard.press('Control+z'); await expect(row(page, 'selected', 'b')).toHaveCount(0); await page.keyboard.press('Control+Shift+z'); await page.keyboard.press('Control+Shift+z');
+  await expect(row(page, 'selected', 'b')).toBeVisible(); await expect(page.getByTestId('remaining-m-a')).toHaveText('5 ימי עבודה');
 });
 
 test('shared scheduling validates dates and dependencies, preserves monthly assignment and removal leaves the schedule', async ({ page }) => {
@@ -135,9 +142,9 @@ test('old plan migrates to current month without losing selection, availability 
   const migrated = await stored(page); expect(migrated.document.schemaVersion).toBe(SCHEMA_VERSION); expect(migrated.document.planning.plans[0]).toMatchObject({ ...legacy, period: currentPlanningPeriod() });
   await assign(page, 'a', 'm-a'); await page.getByRole('link', { name: 'Roadmap', exact: true }).click(); await page.getByRole('button', { name: 'ניהול צוותים וגיבוי', exact: true }).click(); await page.getByRole('button', { name: 'גיבוי ושחזור', exact: true }).click();
   const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'ייצוא גיבוי JSON', exact: false }).click(); const stream = await (await download).createReadStream(), chunks: Buffer[] = []; for await (const chunk of stream!) chunks.push(Buffer.from(chunk)); const buffer = Buffer.concat(chunks), backup = JSON.parse(buffer.toString());
-  expect(backup.schemaVersion).toBe(SCHEMA_VERSION); expect(backup.document.planning.plans[0].taskMemberLinks).toEqual([{ taskId: 'a', memberId: 'm-a' }]);
-  const bad = clone(backup); bad.document.planning.plans[0].taskMemberLinks[0].memberId = 'missing'; const before = await stored(page);
-  await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bad)) }); await expect(page.locator('.backup-panel .field-error')).toContainText('האדם'); expect((await stored(page)).document).toEqual(before.document);
+  expect(backup.schemaVersion).toBe(SCHEMA_VERSION); expect(backup.document.planning.plans[0]).not.toHaveProperty('taskMemberLinks'); expect(backup.document.tasks.find((t: any) => t.id === 'a').assigneeId).toBe('m-a');
+  const bad = clone(backup); bad.document.tasks.find((t: any) => t.id === 'a').assigneeId = 'missing'; const before = await stored(page);
+  await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bad)) }); await expect(page.locator('.backup-panel .field-error')).toContainText('אחראי'); expect((await stored(page)).document).toEqual(before.document);
   await page.getByLabel('בחירת קובץ גיבוי').setInputFiles({ name: 'monthly.json', mimeType: 'application/json', buffer }); await page.getByRole('button', { name: 'אישור והחלפת התכנון', exact: true }).click(); await saved(page);
   await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await expect(page.getByTestId('remaining-m-a')).toHaveText('7 ימי עבודה');
 });
@@ -148,8 +155,8 @@ test('external member move cleans availability and planning assignments in every
   await page.getByRole('link', { name: 'Roadmap', exact: true }).click(); await page.getByRole('button', { name: 'אנשי הצוותים', exact: true }).click();
   const people = page.getByRole('dialog', { name: 'אנשי הצוותים', exact: true });
   const first = people.locator('.member-edit').first(); await first.getByLabel('צוות', { exact: true }).selectOption('team-b'); page.once('dialog', d => d.accept()); await first.getByRole('button', { name: 'שמירת איש צוות', exact: true }).click(); await saved(page); await page.keyboard.press('Escape');
-  const doc = (await stored(page)).document; for (const plan of doc.planning.plans) { expect(plan.taskMemberLinks).toEqual([]); expect(plan.teamCapacities[0].memberAvailability).toEqual([]); }
-  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await expect(row(page, 'selected', 'b').getByRole('combobox', { name: 'אחראי בתכנון', exact: false }).locator('option:checked')).toHaveText('ללא אחראי בתכנון');
+  const doc = (await stored(page)).document; for (const plan of doc.planning.plans) { expect(plan.teamCapacities[0].memberAvailability).toEqual([]); }
+  await page.getByRole('link', { name: 'תכנון חודשי', exact: true }).click(); await expect(row(page, 'selected', 'b').getByRole('combobox', { name: 'אחראי למשימה', exact: false }).locator('option:checked')).toHaveText('ללא אחראי');
 });
 
 test('invalid year and blank availability are rejected; failed persistence retains monthly selections for retry', async ({ page }) => {

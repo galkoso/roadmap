@@ -1,4 +1,5 @@
 import { clone, isScheduled, MonthlyPlan, PlanningCandidateSource, PlanningPane, PlanningPreferences, RoadmapDocument, Task } from './model.js';
+import { assignTask } from './members.js';
 import { duration, today } from './dates.js';
 
 export const currentPlanningPeriod = (): string => today().slice(0, 7);
@@ -38,7 +39,10 @@ export function planningTeamId(doc: RoadmapDocument, task: Task, period = curren
   return link ? link.teamId : task.teamId;
 }
 export function planningMemberId(doc: RoadmapDocument, taskId: string, period = currentPlanningPeriod()): string | null {
-  return monthlyPlan(doc, period).taskMemberLinks?.find(link => link.taskId === taskId)?.memberId ?? null;
+  if (!monthlyPlan(doc, period).selectedTaskIds.includes(taskId)) return null;
+  const task = doc.tasks.find(task => task.id === taskId);
+  const member = doc.members.find(member => member.id === task?.assigneeId);
+  return task && member && member.teamId === planningTeamId(doc, task, period) ? member.id : null;
 }
 export function planningTasks(doc: RoadmapDocument, teamId: string | null, pane: PlanningPane, source: PlanningCandidateSource = 'team', period = currentPlanningPeriod()): Task[] {
   const selected = new Set(monthlyPlan(doc, period).selectedTaskIds), allSelected = new Set(doc.planning.plans.flatMap(plan => plan.selectedTaskIds));
@@ -87,7 +91,6 @@ export function selectPlanningTask(document: RoadmapDocument, id: string, select
   } else if (!selected) {
     ids.delete(id);
     plan.taskTeamLinks = plan.taskTeamLinks?.filter(link => link.taskId !== id);
-    plan.taskMemberLinks = plan.taskMemberLinks?.filter(link => link.taskId !== id);
   }
   plan.selectedTaskIds = [...ids]; return doc;
 }
@@ -104,8 +107,7 @@ export function assignPlanningTask(document: RoadmapDocument, taskId: string, me
   const doc = clone(document), plan = writablePlan(doc, period), task = doc.tasks.find(task => task.id === taskId);
   if (!task || !plan.selectedTaskIds.includes(taskId)) throw new Error('המשימה אינה בתכנון החודש הנבחר');
   if (memberId !== null && !doc.members.some(member => member.id === memberId && member.teamId === planningTeamId(doc, task, period))) throw new Error('האדם אינו שייך לצוות התכנון');
-  plan.taskMemberLinks = plan.taskMemberLinks?.filter(link => link.taskId !== taskId) ?? [];
-  if (memberId !== null) plan.taskMemberLinks.push({ taskId, memberId }); return doc;
+  return assignTask(doc, taskId, memberId);
 }
 export function movePlanningTask(document: RoadmapDocument, taskId: string, from: string, to: string): RoadmapDocument {
   if (!validPlanningPeriod(to)) throw new Error('חודש ושנת התכנון אינם תקינים');
@@ -114,11 +116,9 @@ export function movePlanningTask(document: RoadmapDocument, taskId: string, from
   if (from === to) return doc;
   const target = writablePlan(doc, to);
   source.selectedTaskIds = source.selectedTaskIds.filter(id => id !== taskId); target.selectedTaskIds.push(taskId);
-  const teamLink = source.taskTeamLinks?.find(link => link.taskId === taskId), memberLink = source.taskMemberLinks?.find(link => link.taskId === taskId);
+  const teamLink = source.taskTeamLinks?.find(link => link.taskId === taskId);
   source.taskTeamLinks = source.taskTeamLinks?.filter(link => link.taskId !== taskId);
-  source.taskMemberLinks = source.taskMemberLinks?.filter(link => link.taskId !== taskId);
   if (teamLink) target.taskTeamLinks = [...(target.taskTeamLinks ?? []), teamLink];
-  if (memberLink) target.taskMemberLinks = [...(target.taskMemberLinks ?? []), memberLink];
   return doc;
 }
 // Live edits clean references across all months. Imports are validated strictly before any replacement.
@@ -131,10 +131,7 @@ export function reconcilePlanning(doc: RoadmapDocument): void {
     plan.teamCapacities = plan.teamCapacities.filter(capacity => teams.has(capacity.teamId));
     for (const capacity of plan.teamCapacities) capacity.memberAvailability = capacity.memberAvailability.filter(value =>
       doc.members.some(member => member.id === value.memberId && member.teamId === capacity.teamId));
-    plan.taskMemberLinks = plan.taskMemberLinks?.filter(link => {
-      const task = doc.tasks.find(task => task.id === link.taskId);
-      return task && plan.selectedTaskIds.includes(link.taskId) && doc.members.some(member => member.id === link.memberId && member.teamId === planningTeamId(doc, task, plan.period));
-    });
+
   }
 }
 export function reconcilePlanningPreferences(prefs: PlanningPreferences, doc: RoadmapDocument): PlanningPreferences {

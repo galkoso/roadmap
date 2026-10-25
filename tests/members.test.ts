@@ -25,10 +25,10 @@ describe('team member assignment domain', () => {
     doc = assignTask(doc, id, 'person-b'); expect(task(doc, id)).toEqual({ ...task(original, id), assigneeId: 'person-b' });
     doc = assignTask(doc, id, null); expect(doc).toEqual(original); expect(original).toEqual(before);
   });
-  it('rejects cross-team, unknown and no-team assignments independently of controls', () => {
+  it('rejects cross-team and unknown assignments independently of controls', () => {
     const doc = fixture(); expect(() => assignTask(doc, 'implementation', 'person-c')).toThrow(/צוות/);
     expect(() => assignTask(doc, 'implementation', 'missing')).toThrow();
-    task(doc, 'idea').teamId = null; expect(() => assignTask(doc, 'idea', 'person-a')).toThrow();
+    task(doc, 'idea').teamId = null; expect(task(assignTask(doc, 'idea', 'person-a'), 'idea')).toMatchObject({ teamId: null, assigneeId: 'person-a' });
     expect(() => assignTask(doc, 'missing', null)).toThrow();
   });
   it('clears an incompatible assignee on team changes and preserves metadata', () => {
@@ -36,7 +36,7 @@ describe('team member assignment domain', () => {
     expect(changeTaskTeam(doc, task(doc, 'implementation'), 'team-a')).toBe(true);
     expect(task(doc, 'implementation')).toEqual({ ...before, teamId: 'team-a', assigneeId: null });
     const next = editTask(assignTask(fixture(), 'implementation', 'person-a'), 'implementation', { teamId: null });
-    expect(task(next, 'implementation')).toEqual({ ...before, teamId: null, assigneeId: null });
+    expect(task(next, 'implementation')).toEqual({ ...before, teamId: null });
     expect(() => changeTaskTeam(doc, task(doc, 'idea'), 'missing')).toThrow();
   });
   it('renames without changing identity or assignments, trims names and distinguishes duplicates', () => {
@@ -92,12 +92,11 @@ describe('people projection and persistence', () => {
     const db = new RoadmapStorage('members-' + crypto.randomUUID()); await db.save(doc, prefs, null);
     const loaded = await db.load(); expect(loaded!.document).toEqual({ ...doc, revision: 1 }); expect(loaded!.preferences).toEqual(prefs);
   });
-  it.each(['dangling', 'cross-team', 'no-team', 'member-team', 'duplicate-id'])('rejects invalid %s references without replacing persisted state', async kind => {
+  it.each(['dangling', 'cross-team', 'member-team', 'duplicate-id'])('rejects invalid %s references without replacing persisted state', async kind => {
     const db = new RoadmapStorage('invalid-' + crypto.randomUUID()), doc = fixture(); await db.save(doc, initialPreferences(), null);
     const before = await db.load(), invalid = clone(doc);
     if (kind === 'dangling') task(invalid, 'idea').assigneeId = 'missing';
     if (kind === 'cross-team') task(invalid, 'idea').assigneeId = 'person-c';
-    if (kind === 'no-team') Object.assign(task(invalid, 'idea'), { teamId: null, assigneeId: 'person-a' });
     if (kind === 'member-team') invalid.members[0].teamId = 'missing';
     if (kind === 'duplicate-id') invalid.members[0].id = invalid.teams[0].id;
     expect(() => parseBackup(exportBackup(invalid, initialPreferences()))).toThrow(); expect(await db.load()).toEqual(before);

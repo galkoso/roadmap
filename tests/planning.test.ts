@@ -81,7 +81,7 @@ describe('people capacity and planned workload', () => {
     monthlyPlan(doc, OCT).teamCapacities[0].availableWorkingDays = 100;
     expect(capacitySummary(doc, 'team-a', OCT).available).toBe(25.5);
   });
-  it('subtracts each assigned task once from its person, updates reassignment and preserves original assignees', () => {
+  it('subtracts each assigned task once from its person, uses the original assignee and updates that same field on reassignment', () => {
     let doc = select(select(fixture(), 'a'), 'b'); doc = setCapacity(doc, 'team-a', 10, 'member-a', OCT); doc = setCapacity(doc, 'team-a', 4, 'member-b', OCT);
     const before = clone(doc.tasks); doc = assignPlanningTask(doc, 'a', 'member-a', OCT); doc = assignPlanningTask(doc, 'b', 'member-a', OCT);
     expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ available: 10, known: 8, remaining: 2, tasks: 2 });
@@ -89,13 +89,13 @@ describe('people capacity and planned workload', () => {
     expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT).remaining).toBe(7);
     expect(memberCapacitySummary(doc, 'team-a', 'member-b', OCT)).toMatchObject({ known: 5, remaining: -1 });
     expect(capacitySummary(doc, 'team-a', OCT)).toMatchObject({ known: 8, remaining: 6, unassignedTasks: 0 });
-    expect(doc.tasks).toEqual(before); expect(task(doc, 'a').assigneeId).toBe('member-a');
+    expect(doc.tasks).toEqual(before.map(t => ({ ...t, assigneeId: t.id === 'a' ? 'member-b' : t.id === 'b' ? 'member-a' : t.assigneeId }))); 
     doc = assignPlanningTask(doc, 'a', null, OCT); expect(memberCapacitySummary(doc, 'team-a', 'member-b', OCT).remaining).toBe(4);
     expect(capacitySummary(doc, 'team-a', OCT).unassignedTasks).toBe(1);
   });
-  it('assigns a task without a real team to an existing planning-team person without changing the task', () => {
+  it('assigns a task without a real team to an existing planning-team person without assigning the task to a team', () => {
     const doc = assignPlanningTask(select(fixture(), 'no-team'), 'no-team', 'member-a', OCT);
-    expect(task(doc, 'no-team')).toEqual(task(fixture(), 'no-team')); expect(planningMemberId(doc, 'no-team', OCT)).toBe('member-a');
+    expect(task(doc, 'no-team')).toEqual({ ...task(fixture(), 'no-team'), assigneeId: 'member-a' }); expect(planningMemberId(doc, 'no-team', OCT)).toBe('member-a');
     expect(memberCapacitySummary(doc, 'team-a', 'member-a', OCT)).toMatchObject({ available: null, known: 4, remaining: null });
     expect(() => assignPlanningTask(doc, 'no-team', 'other-member', OCT)).toThrow(/צוות/);
     expect(() => assignPlanningTask(doc, 'a', 'member-a', OCT)).toThrow(/החודש/);
@@ -137,7 +137,7 @@ describe('Roadmap handoff and cleanup across months', () => {
     let doc = assignPlanningTask(select(fixture(), 'a'), 'a', 'member-a', OCT); doc = assignPlanningTask(select(doc, 'b', NOV), 'b', 'member-a', NOV);
     doc = setCapacity(setCapacity(doc, 'team-a', 10, 'member-a', OCT), 'team-a', 12, 'member-a', NOV);
     doc = updateMember(doc, 'member-a', 'דנה', 'team-b'); reconcilePlanning(doc);
-    for (const plan of doc.planning.plans) { expect(plan.taskMemberLinks).toEqual([]); expect(plan.teamCapacities[0].memberAvailability).toEqual([]); }
+    for (const plan of doc.planning.plans) { expect(plan.teamCapacities[0].memberAvailability).toEqual([]); }
     expect(monthlyPlan(doc, OCT).selectedTaskIds).toEqual(['a']); expect(monthlyPlan(doc, NOV).selectedTaskIds).toEqual(['b']); validateDocument(doc);
     doc.tasks = doc.tasks.filter(t => t.id !== 'a'); reconcilePlanning(doc); expect(monthlyPlan(doc, OCT).selectedTaskIds).toEqual([]);
   });
@@ -163,6 +163,18 @@ describe('migration, backup validation and atomic storage', () => {
     const backup = { schemaVersion: 4, exportedAt: new Date().toISOString(), document: old, preferences: initialPreferences() };
     expect(parseBackup(JSON.stringify(backup)).document).toEqual(next);
   });
+  it('merges legacy planning assignments into the task, preferring an existing responsible person', () => {
+    const doc = select(select(select(fixture(), 'a'), 'b'), 'no-team');
+    const old = { ...doc, schemaVersion: 5, planning: { plans: [{ ...doc.planning.plans[0], taskMemberLinks: [
+      { taskId: 'a', memberId: 'member-b' }, { taskId: 'b', memberId: 'member-b' }, { taskId: 'no-team', memberId: 'member-a' }
+    ] }] } }, before = clone(old);
+    const migrated = validateDocument(old);
+    expect(task(migrated, 'a').assigneeId).toBe('member-a');
+    expect(task(migrated, 'b').assigneeId).toBe('member-b');
+    expect(task(migrated, 'no-team')).toMatchObject({ teamId: null, assigneeId: 'member-a' });
+    expect(migrated.planning.plans[0]).not.toHaveProperty('taskMemberLinks'); expect(old).toEqual(before);
+    old.planning.plans[0].taskMemberLinks[0].memberId = 'missing'; expect(() => validateDocument(old)).toThrow(/אחראי/);
+  });
   it('round-trips months, people, balances and independently scoped expansion preferences', async () => {
     let doc = assignPlanningTask(select(fixture(), 'a'), 'a', 'member-b', OCT); doc = select(doc, 'b', NOV); doc = setCapacity(doc, 'team-a', 8.5, 'member-b', OCT);
     const prefs = { ...initialPreferences(), planning: { ...emptyPlanningPreferences(), activePeriod: OCT, candidateSource: 'all' as const, collapsedGroups: [
@@ -176,8 +188,8 @@ describe('migration, backup validation and atomic storage', () => {
     const mutations: ((d: RoadmapDocument) => void)[] = [
       d => d.planning.plans[0].period = '2026-13', d => d.planning.plans.push(clone(d.planning.plans[0])),
       d => d.planning.plans.push({ ...clone(d.planning.plans[0]), period: NOV }), d => d.planning.plans[0].selectedTaskIds.push('missing'),
-      d => d.planning.plans[0].taskMemberLinks![0].memberId = 'other-member', d => d.planning.plans[0].taskMemberLinks!.push({ taskId: 'a', memberId: 'member-b' }),
-      d => d.planning.plans[0].taskMemberLinks!.push({ taskId: 'b', memberId: 'member-a' }), d => d.planning.plans[0].teamCapacities[0].memberAvailability[0].availableWorkingDays = -1,
+      d => task(d, 'a').assigneeId = 'other-member', d => task(d, 'a').assigneeId = 'missing',
+      d => Object.assign(d.planning.plans[0], { taskMemberLinks: [] }), d => d.planning.plans[0].teamCapacities[0].memberAvailability[0].availableWorkingDays = -1,
       d => d.planning.plans[0].taskTeamLinks![0].teamId = 'missing'
     ];
     const db = new RoadmapStorage('invalid-monthly-' + crypto.randomUUID()); await db.save(doc, initialPreferences(), null); const before = await db.load();

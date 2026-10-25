@@ -1,5 +1,7 @@
 # Publish one shared roadmap
 
+Production website: <https://roadmap-ruby-eta.vercel.app>.
+
 The hosted app uses one shared roadmap. Everyone with the link can read, edit,
 delete, or import a replacement. No account is required. Each browser keeps its
 own zoom, filters, and collapsed groups. Other visitors see saved changes within
@@ -53,6 +55,7 @@ the browser's shared-storage path is selected on a non-local hostname.
 
 ## Operational details
 
+- `pnpm build` runs `pnpm check:api` before building Angular. This checks the server dependency graph using Node ESM resolution; server imports use explicit `.js` extensions so they run on Vercel.
 - The API validates roadmap schema and references before writing; Redis performs
   the revision comparison and write atomically using Lua `EVAL`.
 - View-only changes never write a shared roadmap revision.

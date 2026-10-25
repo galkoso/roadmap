@@ -85,8 +85,8 @@ test('backlog assignment, scheduling, reveal and return preserve metadata', asyn
   await saved(page); await page.reload(); await saved(page);
   const row = page.getByTestId('backlog-row-' + item.id);
   await row.getByLabel('צוות לפריט ' + item.title).selectOption({ label: 'ללא צוות' }); await saved(page);
-  await expect(row.getByLabel('אחראי למשימה ' + item.title)).toBeDisabled();
-  expect((await planning(page)).document.tasks.find((t: any) => t.id === item.id)).toEqual({ ...returned, teamId: null, assigneeId: null });
+  await expect(row.getByLabel('אחראי למשימה ' + item.title)).toBeEnabled();
+  expect((await planning(page)).document.tasks.find((t: any) => t.id === item.id)).toEqual({ ...returned, teamId: null });
   await expect(page.locator('.backlog-group').filter({ has: row })).toContainText('ללא צוות');
 });
 test('move and delete confirmations count both pages, cancel is unchanged, Undo restores bulk cleanup and team deletion is blocked', async ({ page }) => {

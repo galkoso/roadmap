@@ -196,3 +196,10 @@ Final verification on the latest shared-workspace schema: production build, Type
 - נבדקו חזותית צילומי `test-results/monthly-people-{1440,390}.png` והמצבים המקופלים המקבילים. נבדקו שמות החודשים בעברית, RTL, סיכומי הצוות, זמינות/היקף/יתרה לכל אדם, שדות אחריות וחודש למשימה, קיפול במקלדת והיעדר גלילה אופקית של העמוד.
 
 האימות החזותי בוצע בצילומי Chromium של בדיקות הפרויקט; לא נבדקו Safari, Firefox או קורא מסך אנושי. משימות אינן מפוצלות בין אנשים או חודשים. מדד ההיקף ממשיך להשתמש בהערכת הבקלוג או במשך ימי העבודה בפועל של משימה משובצת; מעבר חודש תכנון אינו משנה את תאריכי השיבוץ.
+
+
+## Automatic person availability and one task assignee — 2026-10-21
+
+Valid available-day inputs now save immediately without a Save button. Blank/invalid drafts retain the previous stored value and show validation on blur. Monthly planning uses the task's existing assignee; changing it updates the same field used by Backlog and Roadmap. A task without a team may have a responsible person while retaining its null team. Schema 6 migrates legacy planning assignments, keeping an existing original assignee and filling only a missing valid one.
+
+Validation: production build including API typecheck passed; 91 unit/integration tests passed across 8 files. Full Chromium run passed 61/62 with one obsolete balance expectation (the existing task assignee now consumes its five days automatically); after correcting that expectation and adding cross-page assignee verification, all 12 monthly planning tests passed. Combined coverage includes all 62 browser scenarios. The 390px screenshot was visually inspected: no Save buttons, one assignee per task, readable capacity balances and no horizontal overflow.

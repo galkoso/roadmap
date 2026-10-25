@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { AssigneeFieldComponent } from './assignee-field.component';
 import { BacklogTaskDialogComponent } from './backlog-task-dialog.component';
 import { nextWorkingDay } from '../core/dates';
 import { RoadmapStore } from '../core/store';
@@ -8,11 +9,11 @@ import { isScheduled, PlanningCandidateSource, PlanningPane, PlanningPreferences
 import { memberLabel, membersForTeam } from '../core/members';
 import {
   assignPlanningTask, capacitySummary, currentPlanningPeriod, effortTotal, emptyPlanningPreferences, memberCapacitySummary, monthlyPlan,
-  movePlanningTask, parseCapacityDays, planningGroups, planningMemberId, planningTasks, selectPlanningTask, setCapacity, taskEffort, validPlanningPeriod
+  movePlanningTask, parseCapacityDays, planningGroups, planningTasks, selectPlanningTask, setCapacity, taskEffort, validPlanningPeriod
 } from '../core/planning';
 
 @Component({
-  selector: 'app-planning', standalone: true, imports: [RouterLink, FormsModule, BacklogTaskDialogComponent],
+  selector: 'app-planning', standalone: true, imports: [RouterLink, FormsModule, BacklogTaskDialogComponent, AssigneeFieldComponent],
   changeDetection: ChangeDetectionStrategy.OnPush, templateUrl: './planning-page.component.html'
 })
 export class PlanningPageComponent {
@@ -60,10 +61,9 @@ export class PlanningPageComponent {
     this.error.set(''); this.setPreferences({ activePeriod });
   }
   personSummary(id: string) { return memberCapacitySummary(this.store.document(), this.team().id, id, this.period()); }
-  planningAssignee(task: Task): string | null { return planningMemberId(this.store.document(), task.id, this.period()); }
   assign(task: Task, memberId: string | null): void {
     if (this.store.importing()) return;
-    try { this.store.commit(assignPlanningTask(this.store.document(), task.id, memberId, this.period()), 'האחראי בתכנון עודכן'); }
+    try { this.store.commit(assignPlanningTask(this.store.document(), task.id, memberId, this.period()), 'האחראי עודכן'); }
     catch (error) { this.error.set((error as Error).message); }
   }
   move(task: Task, event: Event): void {
@@ -108,14 +108,18 @@ export class PlanningPageComponent {
   draftCapacity(event: Event, memberId: string): void {
     const value = (event.target as HTMLInputElement).value;
     this.drafts.update(drafts => ({ ...drafts, [this.inputKey(memberId)]: value })); this.error.set('');
+    this.persistCapacity(memberId, false);
   }
-  saveCapacity(event: Event, memberId: string): void {
-    event.preventDefault(); if (!this.store.loaded() || this.store.importing()) return;
+  saveCapacity(memberId: string): void { this.persistCapacity(memberId, true); }
+  private persistCapacity(memberId: string, reportInvalid: boolean): void {
+    if (!this.store.loaded() || this.store.importing() || this.drafts()[this.inputKey(memberId)] === undefined) return;
     try {
       const days = parseCapacityDays(this.capacityInput(memberId));
-      this.store.commit(setCapacity(this.store.document(), this.team().id, days, memberId, this.period()), 'ימי העבודה עודכנו');
+      const previous = this.plan().teamCapacities.find(capacity => capacity.teamId === this.team().id)
+        ?.memberAvailability.find(member => member.memberId === memberId)?.availableWorkingDays;
+      if (previous !== days) this.store.commit(setCapacity(this.store.document(), this.team().id, days, memberId, this.period()), 'ימי העבודה עודכנו');
       this.drafts.update(drafts => { const copy = { ...drafts }; delete copy[this.inputKey(memberId)]; return copy; }); this.error.set('');
-    } catch (error) { this.error.set((error as Error).message); }
+    } catch (error) { if (reportInvalid) this.error.set((error as Error).message); }
   }
   edit(task: Task, schedule = false): void {
     if (isScheduled(task)) this.showInRoadmap(task.id);

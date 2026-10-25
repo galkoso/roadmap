@@ -8,7 +8,7 @@ export function memberLabel(doc: RoadmapDocument, member: TeamMember): string {
   return member.name + (duplicates.length > 1 ? ' · ' + member.id.slice(0, length) : '');
 }
 export function validateAssignment(doc: RoadmapDocument, task: Task, assigneeId: string | null): void {
-  if (assigneeId !== null && (!task.teamId || !doc.members.some(m => m.id === assigneeId && m.teamId === task.teamId)))
+  if (assigneeId !== null && !doc.members.some(m => m.id === assigneeId && (task.teamId === null || m.teamId === task.teamId)))
     throw new Error('האחראי חייב להשתייך לצוות המשימה');
 }
 export function assignTask(document: RoadmapDocument, taskId: string, assigneeId: string | null): RoadmapDocument {
@@ -22,7 +22,7 @@ export function changeTaskTeam(doc: RoadmapDocument, task: Task, teamId: string 
   task.teamId = teamId;
   const heading = doc.workItems.find(w => w.id === task.workItemId);
   if (heading?.teamId !== undefined && heading.teamId !== teamId) task.workItemId = null;
-  const reset = !!task.assigneeId && !doc.members.some(m => m.id === task.assigneeId && m.teamId === teamId);
+  const reset = teamId !== null && !!task.assigneeId && !doc.members.some(m => m.id === task.assigneeId && m.teamId === teamId);
   if (reset) task.assigneeId = null;
   return reset;
 }
@@ -32,7 +32,7 @@ export function updateMember(document: RoadmapDocument, id: string, name: string
   if (!member) throw new Error('איש הצוות אינו קיים');
   if (!name.trim()) throw new Error('יש להזין שם');
   if (!doc.teams.some(t => t.id === teamId)) throw new Error('הצוות אינו קיים');
-  if (member.teamId !== teamId) for (const task of doc.tasks) if (task.assigneeId === id) task.assigneeId = null;
+  if (member.teamId !== teamId) for (const task of doc.tasks) if (task.assigneeId === id && task.teamId !== null && task.teamId !== teamId) task.assigneeId = null;
   Object.assign(member, { name: name.trim(), teamId }); return doc;
 }
 export function removeMember(document: RoadmapDocument, id: string): RoadmapDocument {

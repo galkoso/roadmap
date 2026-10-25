@@ -112,3 +112,7 @@
 @media(max-width:600px){.planning-person-columns{display:none}.planning-person{grid-template-columns:1fr 1fr;gap:12px}.planning-person form{grid-column:1/-1}.planning-person .mobile-field-label{display:block}.planning-task-allocation{padding:0;gap:8px}.planning-task-allocation label{width:50%}.planning-period{gap:10px}.planning-people{padding:14px}}
 
 .planning-capacity>.planning-metric:first-child{border-inline-start:0}@media(max-width:900px){.planning-capacity>.planning-metric:first-child{grid-column:1/-1;border-bottom:1px solid var(--grid)}}
+
+.planning-person-input{min-width:0}.planning-person-input label{margin-bottom:6px}.planning-task-allocation>app-assignee-field{flex:1;min-width:0}.planning-task-allocation .assignee-field{margin:0;font-size:10px;font-weight:400}@media(max-width:600px){.planning-person-input{grid-column:1/-1}}
+
+.planning-people>summary{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;min-height:28px}.planning-people>summary::-webkit-details-marker{display:none}.planning-people>summary::before{content:"‹";color:#9cafcc;font-size:20px}.planning-people[open]>summary::before{content:"⌄"}.planning-people>summary:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:3px}
