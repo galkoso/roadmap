@@ -264,3 +264,17 @@
 .person-row .person-title{cursor:default}.person-row .person-title .initial-avatar{flex-shrink:0}
 .person-row .person-title>.initial-avatar:first-child{width:26px;font-size:12px}
 .bar.assignment-highlight,.bar.selected-task{outline:2px solid #8bb3f0;outline-offset:2px}
+
+.planning-team-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.planning-team-toolbar .planning-teams{margin-bottom:0;flex:1}
+.planning-summary-button{font-size:12px;padding:7px 11px;white-space:nowrap}
+.planning-assignment-summary{width:min(600px,calc(100vw - 24px));max-height:85dvh;overflow:auto;margin:auto;padding:20px;border:1px solid #35485f;border-radius:12px;background:var(--surface);color:#dae4f2;box-shadow:0 20px 70px #0008}
+.planning-assignment-summary::backdrop{background:#050a14bb}
+.planning-assignment-summary>header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;border-bottom:1px solid #2b3a50;padding-bottom:12px}
+.planning-assignment-summary h2{font-size:18px;margin:0}.planning-assignment-summary header p{font-size:12px;color:#a5b6cc;margin:6px 0 0}
+.planning-assignment-summary header button{font-size:20px;padding:2px 10px;flex-shrink:0}
+.assignment-summary-person{padding:14px 0;border-bottom:1px solid #2b3a50}.assignment-summary-person:last-child{border-bottom:0}
+.assignment-summary-person h3{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:15px;margin:0 0 8px}
+.assignment-summary-person h3 small{font-size:12px;font-weight:400;color:#a5b6cc}
+.assignment-summary-person ul{padding-inline-start:20px;margin:0}.assignment-summary-person li{padding:4px 0;line-height:1.5;overflow-wrap:anywhere}.assignment-summary-person li span{color:#a8c5ff;white-space:nowrap}
+@media(max-width:600px){.planning-assignment-summary{padding:16px}.planning-summary-button{min-height:40px}.planning-team-toolbar .planning-teams{flex-basis:100%}}

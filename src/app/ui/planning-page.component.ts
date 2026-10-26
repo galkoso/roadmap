@@ -3,14 +3,14 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AssigneeFieldComponent } from './assignee-field.component';
 import { BacklogTaskDialogComponent } from './backlog-task-dialog.component';
-import { nextWorkingDay } from '../core/dates';
+import { monthLabel, nextWorkingDay } from '../core/dates';
 import { Session } from '../core/session';
 import { RoadmapStore } from '../core/store';
 import { isScheduled, PlanningCandidateSource, PlanningPane, PlanningPreferences, statuses, Task } from '../core/model';
 import { memberLabel, membersForTeam } from '../core/members';
 import {
   assignPlanningTask, capacitySummary, currentPlanningPeriod, effortTotal, emptyPlanningPreferences, memberCapacitySummary, monthlyPlan,
-  movePlanningTask, planningGroups, planningTasks, selectPlanningTask, taskEffort
+  movePlanningTask, planningGroups, planningMemberId, planningTasks, selectPlanningTask, taskEffort
 } from '../core/planning';
 
 @Component({
@@ -32,6 +32,16 @@ export class PlanningPageComponent {
     { key: 'selected', title: 'המשימות שנבחרו לתכנון' }, { key: 'candidates', title: 'משימות מהבקלוג לבחירה' }
   ];
   readonly selected = computed(() => planningTasks(this.store.document(), this.team().id, 'selected', 'team', this.period()));
+  readonly monthTitle = monthLabel;
+  readonly assignmentGroups = computed(() => {
+    const doc = this.store.document(), tasks = this.selected();
+    const assigned = tasks.map(task => ({ task, memberId: planningMemberId(doc, task.id, this.period()) }));
+    const groups = this.members().map(member => ({ id: member.id, name: memberLabel(doc, member),
+      tasks: assigned.filter(entry => entry.memberId === member.id).map(entry => entry.task) }));
+    const unassigned = assigned.filter(entry => !entry.memberId).map(entry => entry.task);
+    if (unassigned.length) groups.push({ id: '__unassigned__', name: 'ללא אחראי בצוות', tasks: unassigned });
+    return groups.map(group => ({ ...group, total: effortTotal(group.tasks) }));
+  });
   readonly candidateSource = computed(() => this.preferences().candidateSource ?? 'all');
   readonly candidates = computed(() => planningTasks(this.store.document(), this.team().id, 'candidates', this.candidateSource(), this.period()));
   readonly groups = computed(() => ({ selected: planningGroups(this.store.document(), this.selected()), candidates: planningGroups(this.store.document(), this.candidates()) }));

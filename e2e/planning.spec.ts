@@ -180,3 +180,32 @@ for (const width of [1440, 390]) {
     await toggle.press('Space'); await expect(row(page, 'selected', 'a')).toBeVisible(); await page.getByRole('heading', { level: 1 }).click(); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: `test-results/monthly-people-${width}.png`, fullPage: true });
   });
 }
+
+for (const width of [1440, 390]) {
+  test(`person task summary follows assignments, effort and selected month at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await add(page, 'a'); await add(page, 'b'); await add(page, 'unknown'); await add(page, 'solo');
+    await assign(page, 'b', 'm-b'); await assign(page, 'unknown', 'm-a');
+    const button = page.getByRole('button', { name: 'סיכום לפי אנשים', exact: true });
+    await button.click();
+    const dialog = page.getByRole('dialog', { name: 'סיכום משימות לפי אנשים', exact: true });
+    await expect(dialog).toBeVisible();
+    const dana = dialog.locator('[data-summary-member="m-a"]'), ori = dialog.locator('[data-summary-member="m-b"]');
+    await expect(dana).toContainText('משימה ראשונה (5 ימי עבודה)');
+    await expect(dana).toContainText('משימה ללא היקף (חסר היקף)');
+    await expect(dana).toContainText('סה״כ 5 ימי עבודה · 1 חסר היקף');
+    await expect(ori).toContainText('משימה שנייה (3 ימי עבודה)');
+    await expect(dialog.locator('[data-summary-member="__unassigned__"]')).toContainText('משימה עצמאית (2 ימי עבודה)');
+    await expect(dialog).not.toContainText('משימה לצוות אחר');
+    expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: `/tmp/planning-person-summary-${width}.png`, fullPage: true });
+    await page.keyboard.press('Escape'); await expect(button).toBeFocused();
+    await assign(page, 'a', 'm-b'); await button.click();
+    await expect(ori).toContainText('סה״כ 8 ימי עבודה'); await expect(dana).not.toContainText('משימה ראשונה');
+    await dialog.getByRole('button', { name: 'סגירת סיכום משימות' }).click();
+    await period(page, NOV); await button.click();
+    await expect(dialog.locator('li')).toHaveCount(2);
+    await expect(dana).toContainText('אין משימות בתכנון לחודש זה');
+    await expect(dialog).not.toContainText('משימה ראשונה');
+  });
+}

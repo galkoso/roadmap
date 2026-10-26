@@ -1,7 +1,21 @@
 <section class="planning-page" dir="rtl" [attr.data-shared-draft]="dirty() ? '' : null">
   <header class="app-heading"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><h1>תכנון חודשי</h1><p>זמינות אנשים ובחירת משימות לפי חודש</p></div><span class="save-state" role="status" [class.failed]="!!store.error()"><i></i>{{ store.saveStatus() }}</span></header>
   @if (store.loaded()) {
+    <div class="planning-team-toolbar">
     <nav class="planning-teams" aria-label="בחירת צוות לתכנון">@for (item of teams(); track item.id) { <button [class.active]="team().id === item.id" [attr.aria-pressed]="team().id === item.id" (click)="selectTeam(item.id)">{{ item.name }}</button> }</nav>
+      <button class="planning-summary-button" type="button" aria-haspopup="dialog" (click)="assignmentSummary.showModal()">סיכום לפי אנשים</button>
+    </div>
+    <dialog #assignmentSummary class="planning-assignment-summary" aria-labelledby="assignment-summary-title" dir="rtl">
+      <header><div><h2 id="assignment-summary-title">סיכום משימות לפי אנשים</h2><p>{{ team().name }} · {{ monthTitle(period() + '-01') }}</p></div><button type="button" aria-label="סגירת סיכום משימות" (click)="assignmentSummary.close()" autofocus>×</button></header>
+      @for (group of assignmentGroups(); track group.id) {
+        <section class="assignment-summary-person" [attr.data-summary-member]="group.id">
+          <h3>{{ group.name }} <small>סה״כ {{ group.total.known }} ימי עבודה@if (group.total.missing) { · {{ group.total.missing }} חסר היקף }</small></h3>
+          <ul>@for (task of group.tasks; track task.id) {
+            <li><bdi>{{ task.title }}</bdi>&nbsp;<span>({{ effort(task) === null ? 'חסר היקף' : effort(task) + ' ימי עבודה' }})</span></li>
+          } @empty { <li class="field-hint">אין משימות בתכנון לחודש זה</li> }</ul>
+        </section>
+      } @empty { <p class="field-hint">אין אנשי צוות או משימות בתכנון לחודש זה.</p> }
+    </dialog>
     @if (error()) { <p class="field-error" role="alert">{{ error() }}</p> }
     @let budget = summary();
     <section class="planning-capacity" aria-label="קיבולת הצוות">
