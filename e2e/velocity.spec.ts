@@ -109,3 +109,39 @@ for (const width of [1440, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }
+
+for (const width of [1440, 390]) {
+  test(`people share one row with sequential and overlapping tasks at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/roadmap'); await expect(page.locator('.save-state')).toHaveText('נשמר');
+    const document = seedDocument();
+    document.members = [{ id: 'noa', teamId: 'team-a', name: 'נועה', order: 0 }];
+    document.tasks = [
+      { id: 'first', startDate: '2026-11-01', endDate: '2026-11-03' },
+      { id: 'overlap', startDate: '2026-11-02', endDate: '2026-11-04' },
+      { id: 'later', startDate: '2026-11-08', endDate: '2026-11-10' }
+    ].map((task, order) => ({ ...task, title: task.id, assigneeId: 'noa', teamId: 'team-a', workItemId: 'services',
+      planningState: 'scheduled' as const, effortWorkingDays: 3, status: 'planned' as const, color: '#3975d5', notes: '', order }));
+    document.dependencies = [{ id: 'next', predecessorId: 'first', successorId: 'later', type: 'finish_to_start', lagWorkingDays: 0 }];
+    document.attendance = [{ memberId: 'noa', date: '2026-11-05', status: 'absent' }];
+    const preferences = { ...initialPreferences(), grouping: 'people' as const, center: '2026-11-05', peopleCollapsed: ['person:team-a:noa'] };
+    await page.evaluate(async saved => {
+      const db = await new Promise<IDBDatabase>(resolve => { const request = indexedDB.open('personal-roadmap-v1', 1); request.onsuccess = () => resolve(request.result); });
+      await new Promise<void>((resolve, reject) => { const tx = db.transaction('roadmap', 'readwrite'); tx.objectStore('roadmap').put(saved, 'current'); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); }); db.close();
+    }, { document, preferences });
+    await page.reload();
+    const person = page.locator('.person-row').filter({ hasText: 'נועה' });
+    await expect(person).toHaveCount(1); await expect(person.locator('.task-bar')).toHaveCount(3);
+    await expect(page.locator('.task-name')).toHaveCount(0);
+    await expect(person.locator('.absence-marker')).toHaveCount(1);
+    const first = page.getByTestId('task-bar-first-team-a'), overlap = page.getByTestId('task-bar-overlap-team-a');
+    const later = page.getByTestId('task-bar-later-team-a');
+    const boxes = await Promise.all([first.boundingBox(), overlap.boundingBox(), later.boundingBox()]);
+    expect(boxes[0]!.y).toBe(boxes[2]!.y); expect(boxes[1]!.y).toBeGreaterThan(boxes[0]!.y);
+    await first.focus(); await expect(page.getByRole('tooltip')).toHaveText('first');
+    await page.keyboard.press('Enter'); await expect(page.locator('.editor-panel')).toBeVisible();
+    await expect(page.locator('.dependency-lines path[marker-end]')).toHaveCount(1);
+    await page.screenshot({ path: `/tmp/people-one-row-${width}.png`, fullPage: true });
+    await page.reload(); await expect(person.locator('.task-bar')).toHaveCount(3);
+  });
+}

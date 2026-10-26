@@ -30,7 +30,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/roadmap'); await saved(page);
 });
 test.afterEach(async ({ page }) => { expect(browserErrors.get(page)).toEqual([]); });
-test('members, scoped assignment, keyboard collapse, immediate person projection and reload preserve the schedule', async ({ page }) => {
+test('members, scoped assignment, consolidated person rows and reload preserve the schedule', async ({ page }) => {
   const a = await addPerson(page, 'דנה'), b = await addPerson(page, 'דנה'), c = await addPerson(page, 'אורי', 'team-a');
   const before = await planning(page), item = before.document.tasks.find((t: any) => t.id === 'implementation');
   await page.getByLabel('אחראי למשימה ' + item.title).selectOption(a.id); await saved(page);
@@ -40,13 +40,15 @@ test('members, scoped assignment, keyboard collapse, immediate person projection
   expect(await viewport.evaluate(el => el.scrollLeft)).toBe(left);
   expect((await planning(page)).document.tasks.map(legacyFields)).toEqual(before.document.tasks.map((t: any) => t.id === item.id ? { ...t, assigneeId: a.id } : t));
   await expect(page.locator('.person-title').filter({ hasText: a.id.slice(0, 8) })).toContainText('1 משימות');
-  const destination = page.locator('.person-title').filter({ hasText: b.id.slice(0, 8) }); await destination.focus(); await page.keyboard.press('Enter');
-  await expect(destination).toHaveAttribute('aria-expanded', 'false');
+  const destination = page.locator('.person-row').filter({ hasText: b.id.slice(0, 8) });
+  await page.getByLabel('תצוגת Roadmap').selectOption('work');
   const control = page.getByLabel('אחראי למשימה ' + item.title);
   const values = await control.locator('option').evaluateAll(options => options.map(o => (o as HTMLOptionElement).value));
   expect(values.some(v => v.includes(a.id))).toBe(true); expect(values).not.toContain(c.id);
-  await control.selectOption(b.id); await saved(page); await expect(destination).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.locator('.assignment-highlight')).toContainText(item.title);
+  await control.selectOption(b.id); await saved(page);
+  await page.getByLabel('תצוגת Roadmap').selectOption('people');
+  await expect(destination.getByTestId('task-bar-' + item.id + '-team-b')).toBeVisible();
+  await page.getByLabel('תצוגת Roadmap').selectOption('work');
   expect(legacyFields((await planning(page)).document.tasks.find((t: any) => t.id === item.id))).toEqual({ ...item, assigneeId: b.id });
   await control.selectOption({ label: 'ללא אחראי' }); await saved(page);
   expect(legacyFields((await planning(page)).document.tasks.find((t: any) => t.id === item.id))).toEqual(item);
@@ -56,6 +58,7 @@ test('members, scoped assignment, keyboard collapse, immediate person projection
   await editor.getByLabel('צוות אחראי').selectOption('team-a'); await expect(editor).toContainText('האחראי הוסר');
   await editor.getByRole('button', { name: 'שמירת השינויים', exact: true }).click(); await saved(page);
   expect(legacyFields((await planning(page)).document.tasks.find((t: any) => t.id === item.id))).toEqual({ ...item, teamId: 'team-a', assigneeId: null });
+  await page.getByLabel('תצוגת Roadmap').selectOption('people');
   await page.reload(); await saved(page); await expect(page.getByLabel('תצוגת Roadmap')).toHaveValue('people');
   await expect(page.locator('.person-title').filter({ hasText: a.id.slice(0, 8) })).toContainText('אין משימות בציר');
   await page.screenshot({ path: 'test-results/members-roadmap.png', fullPage: true });
@@ -64,7 +67,7 @@ test('members, scoped assignment, keyboard collapse, immediate person projection
     const names = await page.locator('.names-header').boundingBox(), chart = await viewport.boundingBox();
     return chart!.width - names!.width;
   }).toBeGreaterThanOrEqual(120);
-  await page.locator('.task-name').filter({ hasText: item.title }).click();
+  await page.getByTestId('task-bar-' + item.id + '-team-a').focus(); await page.keyboard.press('Enter');
   await expect(editor.getByLabel('אחראי למשימה ' + item.title)).toBeVisible();
   await expect(editor.getByLabel('אחראי למשימה ' + item.title)).toBeEnabled();
   await page.screenshot({ path: 'test-results/members-roadmap-narrow.png', fullPage: true });

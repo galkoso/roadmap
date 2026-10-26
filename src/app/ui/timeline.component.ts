@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { requiredEffort } from '../core/availability';
 import { AfterViewInit, ChangeDetectorRef, ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, input, OnDestroy, output, signal, ViewChild } from '@angular/core';
 import { AssigneeFieldComponent } from './assignee-field.component';
@@ -7,12 +8,24 @@ import { clone, isScheduled, RoadmapDocument, ScheduledTask, Team, WorkItem } fr
 import { addDays, daysBetween, formatDate, isWorkingDay, monthLabel, today } from '../core/dates';
 import { editTask, shiftTask, shiftWork, workRange } from '../core/scheduler';
 import { statuses } from '../core/model';
-interface Row { key: string; kind: 'team' | 'work' | 'person' | 'task'; memberId?: string; personName?: string; initial?: string; count?: number; team: Team & { unassigned?: boolean }; independent?: boolean; work?: WorkItem; task?: ScheduledTask; start?: string; end?: string; shared?: boolean }
+interface Row { bars?: Row[]; height?: number; top?: number; barTop?: number; key: string; kind: 'team' | 'work' | 'person' | 'task'; memberId?: string; personName?: string; initial?: string; count?: number; team: Team & { unassigned?: boolean }; independent?: boolean; work?: WorkItem; task?: ScheduledTask; start?: string; end?: string; shared?: boolean }
 interface AbsenceMarker { date: string; label: string }
 interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' | 'start' | 'end'; base: RoadmapDocument; start: string; end: string; next: RoadmapDocument; moved: boolean }
 @Component({
-  selector: 'app-timeline', standalone: true, imports: [AssigneeFieldComponent], changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'app-timeline', standalone: true, imports: [AssigneeFieldComponent, NgTemplateOutlet], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <ng-template #taskBar let-item>
+      <button class="bar" [class.work-bar]="item.kind === 'work'" [class.task-bar]="item.kind === 'task'" [class.unresolved-schedule]="!!item.task?.scheduleIssue"
+        [style.top.px]="item.barTop ?? 12" [class.selected-task]="item.task?.id === selected()" [class.assignment-highlight]="item.task?.id === highlighted()" [style.left.px]="barLeft(item.start)" [style.width.px]="barWidth(item.start, item.end)"
+        [style.background]="item.task?.color ?? '#a9b4c5'" [attr.data-testid]="item.kind + '-bar-' + (item.task?.id ?? item.work?.id) + '-' + item.team.id"
+        [attr.aria-label]="barLabel(item)" [title]="barLabel(item)" (mouseenter)="showTaskTooltip($event, item)" (mouseleave)="taskTooltip.set(null)"
+        (focus)="showTaskTooltip($event, item)" (blur)="taskTooltip.set(null)" (pointerdown)="begin($event, item, item.kind === 'work' ? 'work' : 'move')"
+        (click)="barClick(item)">
+        @if (item.kind === 'task') { <span class="resize-handle start" aria-hidden="true" (pointerdown)="begin($event, item, 'start')"></span> }
+        @if (barWidth(item.start, item.end) > 150) { <span class="bar-dates">{{ item.task?.scheduleIssue ? '⚠ ' : '' }}{{ shortDate(item.start) }} – {{ shortDate(item.end) }}</span> }
+        @if (item.kind === 'task') { <span class="resize-handle end" aria-hidden="true" (pointerdown)="begin($event, item, 'end')"></span> }
+      </button>
+    </ng-template>
     <div class="timeline-caption"><span>{{ periodLabel() }}</span><span class="legend"><i></i> משימה <b></b> סוף שבוע <span class="today-dot"></span> היום <span class="absence-key"></span> לא נמצא · Velocity</span></div>
     <div #viewport class="timeline-viewport" (scroll)="onScroll()" aria-label="ציר הזמן; תאריכים מתקדמים משמאל לימין" tabindex="0">
       <div class="timeline-canvas" [style.width.px]="width() + namesWidth()">
@@ -27,19 +40,14 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
           <div class="calendar-background" [style.width.px]="width()" [style.background-image]="background()"></div>
           @if (todayX() >= 0 && todayX() <= width()) { <div class="today-line" [style.left.px]="todayX()"><span>היום</span></div> }
           @for (row of rows(); track row.key) {
-            <div class="timeline-row" [class.team-row]="row.kind === 'team'" [class.work-row]="row.kind === 'work'" [class.person-row]="row.kind === 'person'" [class.unassigned-person]="row.kind === 'person' && !row.initial" [class.assignment-highlight]="row.task?.id === highlighted()" [class.selected]="row.task?.id === selected()">
+            <div class="timeline-row" [style.height.px]="row.height ?? 48" [class.team-row]="row.kind === 'team'" [class.work-row]="row.kind === 'work'" [class.person-row]="row.kind === 'person'" [class.unassigned-person]="row.kind === 'person' && !row.initial" [class.assignment-highlight]="row.task?.id === highlighted()" [class.selected]="row.task?.id === selected()">
               <div class="lane" [style.width.px]="width()" [title]="absenceLabels().get(row.key) ?? ''">
-                @if (row.start && row.end && intersects(row.start, row.end)) {
-                  <button class="bar" [class.work-bar]="row.kind === 'work'" [class.task-bar]="row.kind === 'task'" [class.unresolved-schedule]="!!row.task?.scheduleIssue"
-                    [style.left.px]="barLeft(row.start)" [style.width.px]="barWidth(row.start, row.end)"
-                    [style.background]="row.task?.color ?? '#a9b4c5'" [attr.data-testid]="row.kind + '-bar-' + (row.task?.id ?? row.work?.id) + '-' + row.team.id"
-                    [attr.aria-label]="barLabel(row)" [title]="barLabel(row)" (mouseenter)="showTaskTooltip($event, row)" (mouseleave)="taskTooltip.set(null)"
-                    (focus)="showTaskTooltip($event, row)" (blur)="taskTooltip.set(null)" (pointerdown)="begin($event, row, row.kind === 'work' ? 'work' : 'move')"
-                    (click)="barClick(row)">
-                    @if (row.kind === 'task') { <span class="resize-handle start" aria-hidden="true" (pointerdown)="begin($event, row, 'start')"></span> }
-                    @if (barWidth(row.start, row.end) > 150) { <span class="bar-dates">{{ row.task?.scheduleIssue ? '⚠ ' : '' }}{{ shortDate(row.start) }} – {{ shortDate(row.end) }}</span> }
-                    @if (row.kind === 'task') { <span class="resize-handle end" aria-hidden="true" (pointerdown)="begin($event, row, 'end')"></span> }
-                  </button>
+                @if (row.bars) {
+                  @for (item of row.bars; track item.key) {
+                    @if (intersects(item.start!, item.end!)) { <ng-container [ngTemplateOutlet]="taskBar" [ngTemplateOutletContext]="{ $implicit: item }"/> }
+                  }
+                } @else if (row.start && row.end && intersects(row.start, row.end)) {
+                  <ng-container [ngTemplateOutlet]="taskBar" [ngTemplateOutletContext]="{ $implicit: row }"/>
                 }
                 @for (absence of rowAbsences().get(row.key) ?? []; track absence.date) {
                   <span class="absence-marker" role="img" [attr.aria-label]="absence.label" [attr.data-date]="absence.date"
@@ -50,7 +58,7 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
                 @if (row.kind === 'team') {
                   <button class="hierarchy team-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><i class="team-icon">{{ row.team.name.slice(-2, -1) }}</i>{{ row.team.name }}<small>{{ teamCount(row.team.id) }}</small></button>@if (!row.team.unassigned) { <button class="row-action team-name-edit" [attr.aria-label]="'שינוי שם הצוות ' + row.team.name" title="שינוי שם הצוות" (click)="editTeam.emit(row.team.id)">✎</button> }
                 } @else if (row.kind === 'person') {
-                  <button class="hierarchy person-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><span class="initial-avatar" aria-hidden="true">{{ row.initial ?? '–' }}</span><span class="name-text">{{ row.personName }}</span><small>{{ row.count }} משימות{{ row.count === 0 ? ' · אין משימות בציר' : '' }}</small></button>
+                  <div class="hierarchy person-title"><span class="initial-avatar" aria-hidden="true">{{ row.initial ?? '–' }}</span><span class="name-text">{{ row.personName }}</span><small>{{ row.count }} משימות{{ row.count === 0 ? ' · אין משימות בציר' : '' }}</small></div>
                 } @else if (row.kind === 'work') {
                   <button class="hierarchy work-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><span class="name-text">{{ row.work!.title }}</span>@if (row.shared) { <span class="shared" title="עבודה משותפת">משותפת</span> }</button>
                   @if (!row.independent) { <div class="row-actions"><button class="row-action" [attr.aria-label]="'הוספת משימה תחת ' + row.work!.title" (click)="addTask.emit(row.work!.id)">＋</button><button class="row-action" [attr.aria-label]="row.work!.teamId === undefined ? 'עריכת עבודה' : 'עריכת כותרת'" (click)="editWork.emit(row.work!.id)">⋯</button><button class="row-action delete-action" [attr.aria-label]="'מחיקת עבודה ' + row.work!.title" title="מחיקת עבודה" (click)="deleteWork.emit(row.work!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div> }
@@ -66,7 +74,7 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
               </div>
             </div>
           }
-          <svg class="dependency-lines" [attr.width]="width()" [attr.height]="rows().length * 48" aria-hidden="true">
+          <svg class="dependency-lines" [attr.width]="width()" [attr.height]="rowsHeight()" aria-hidden="true">
             <defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7" fill="#64748b"/></marker></defs>
             @for (line of lines(); track line.key) { <path [attr.d]="line.path" marker-end="url(#arrow)"/> }
           </svg>
@@ -126,16 +134,18 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
         const team: Team & { unassigned?: boolean } = { id: group.teamId ?? '__unassigned__', name: group.name, order: 0, unassigned: group.teamId === null };
         result.push({ key: group.key, kind: 'team', team });
         if (collapsed.has(group.key)) continue;
-        const addTasks = (tasks: ScheduledTask[]) => {
-          for (const task of tasks) result.push({ key: task.id, kind: 'task', team, task, work: doc.workItems.find(w => w.id === task.workItemId), start: task.startDate, end: task.endDate });
-        };
-        if (group.teamId === null) addTasks(group.tasks);
-        else for (const person of group.groups) {
-          result.push({ key: person.key, kind: 'person', team, memberId: person.member?.id, personName: person.name, initial: person.member?.name.slice(0, 1), count: person.tasks.length });
-          if (!collapsed.has(person.key)) addTasks(person.tasks);
+        if (group.teamId === null) {
+          const assignees = new Set(group.tasks.map(task => task.assigneeId ?? null));
+          for (const id of assignees) {
+            const member = doc.members.find(member => member.id === id);
+            result.push(this.personRow(team, personKey(team.id, id), member?.name ?? 'ללא אחראי', id ?? undefined,
+              group.tasks.filter(task => (task.assigneeId ?? null) === id)));
+          }
+        } else for (const person of group.groups) {
+          result.push(this.personRow(team, person.key, person.name, person.member?.id, person.tasks));
         }
       }
-      return result;
+      return this.positionRows(result);
     }
     const populatedWorks = new Set(doc.tasks.map(t => t.workItemId));
     const workTasks = new Map<string, ScheduledTask[]>();
@@ -161,8 +171,31 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
         if (!collapsed.has(key)) for (const task of independent) result.push({ key: task.id, kind: 'task', team, independent: true, task, start: task.startDate, end: task.endDate });
       }
     }
-    return result;
+    return this.positionRows(result);
   });
+  private personRow(team: Row['team'], key: string, personName: string, memberId: string | undefined, tasks: ScheduledTask[]): Row {
+    const ends: string[] = [];
+    const bars = [...tasks].sort((a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate) || a.id.localeCompare(b.id)).map(task => {
+      let track = ends.findIndex(end => end < task.startDate);
+      if (track < 0) track = ends.length;
+      ends[track] = task.endDate;
+      return { key: task.id, kind: 'task' as const, team, task, start: task.startDate, end: task.endDate, barTop: 12 + track * 28 };
+    });
+    return { key, kind: 'person', team, memberId, personName, initial: memberId ? personName.slice(0, 1) : undefined,
+      count: tasks.length, bars, height: Math.max(48, 20 + ends.length * 28) };
+  }
+  private positionRows(rows: Row[]): Row[] {
+    let top = 0;
+    return rows.map(row => { const positioned = { ...row, top }; top += row.height ?? 48; return positioned; });
+  }
+  readonly rowsHeight = computed(() => this.rows().reduce((height, row) => height + (row.height ?? 48), 0));
+  private taskPosition(id: string): { row: Row; task: ScheduledTask; y: number } | undefined {
+    for (const row of this.rows()) {
+      const item = row.task?.id === id ? row : row.bars?.find(bar => bar.task?.id === id);
+      if (item?.task) return { row, task: item.task, y: (row.top ?? 0) + (item.barTop ?? 12) + 12 };
+    }
+    return undefined;
+  }
   readonly rowAbsences = computed(() => {
     const doc = this.store.visible(), end = addDays(this.start(), this.span());
     const members = new Map(doc.members.map(member => [member.id, member]));
@@ -209,11 +242,11 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   });
   readonly lines = computed(() => {
     const selected = this.selected(); if (!selected) return [];
-    const rows = this.rows(), doc = this.store.visible();
+    const doc = this.store.visible();
     return doc.dependencies.filter(d => d.predecessorId === selected || d.successorId === selected).flatMap(d => {
-      const a = rows.findIndex(r => r.task?.id === d.predecessorId), b = rows.findIndex(r => r.task?.id === d.successorId);
-      if (a < 0 || b < 0 || !this.intersects(rows[a].start!, rows[a].end!) || !this.intersects(rows[b].start!, rows[b].end!)) return [];
-      const x1 = this.x(addDays(rows[a].end!, 1)), x2 = this.x(rows[b].start!), y1 = a * 48 + 24, y2 = b * 48 + 24;
+      const a = this.taskPosition(d.predecessorId), b = this.taskPosition(d.successorId);
+      if (!a || !b || !this.intersects(a.task.startDate, a.task.endDate) || !this.intersects(b.task.startDate, b.task.endDate)) return [];
+      const x1 = this.x(addDays(a.task.endDate, 1)), x2 = this.x(b.task.startDate), y1 = a.y, y2 = b.y;
       return [{ key: d.id, path: `M ${x1} ${y1} H ${x1 + 12} V ${y2} H ${x2}` }];
     });
   });
@@ -298,8 +331,8 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
     this.goTo(task.startDate);
     setTimeout(() => {
       if (this.destroyed) return;
-      const index = this.rows().findIndex(row => row.task?.id === id);
-      this.viewport.nativeElement.scrollTop = Math.max(0, index * 48 - 60);
+      const position = this.taskPosition(id);
+      this.viewport.nativeElement.scrollTop = Math.max(0, (position?.y ?? 0) - 60);
       this.viewport.nativeElement.querySelector<HTMLElement>(`[data-testid="task-bar-${CSS.escape(id)}-${CSS.escape(team)}"]`)?.focus({ preventScroll: true });
     }, 30);
   }
@@ -311,8 +344,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
     this.store.setPreferences(this.store.preferences().grouping === 'people' ? { peopleCollapsed: keys } : { collapsed: keys });
     setTimeout(() => {
       if (!this.viewport || this.destroyed) return;
-      const index = this.rows().findIndex(row => row.task?.id === id), el = this.viewport.nativeElement;
-      const top = index * 48;
+      const el = this.viewport.nativeElement, top = this.taskPosition(id)?.y ?? 0;
       if (top < el.scrollTop + 70 || top > el.scrollTop + el.clientHeight - 48) el.scrollTop = Math.max(0, top - 70);
     }, 0);
   }

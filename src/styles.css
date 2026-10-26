@@ -260,3 +260,7 @@
 .absence-marker:focus-visible{outline:2px solid #ffc3a0;outline-offset:-2px}
 
 .roadmap-task-tooltip{position:fixed;z-index:30;transform:translateY(-100%);max-width:min(280px,calc(100vw - 16px));padding:9px 12px;border:1px solid #6984aa;border-radius:7px;background:#20324b;color:#edf4ff;font-size:13px;line-height:1.5;overflow-wrap:anywhere;box-shadow:0 4px 16px #0006;pointer-events:none}
+
+.person-row .person-title{cursor:default}.person-row .person-title .initial-avatar{flex-shrink:0}
+.person-row .person-title>.initial-avatar:first-child{width:26px;font-size:12px}
+.bar.assignment-highlight,.bar.selected-task{outline:2px solid #8bb3f0;outline-offset:2px}
