@@ -47,6 +47,23 @@ for (const width of [1440, 390]) {
     await page.getByRole('navigation', { name: 'ניווט ראשי' }).getByRole('link', { name: 'Roadmap', exact: true }).click();
     const bar = page.locator('.bar').filter({ hasText: '25.10' }).last();
     await expect(bar).toBeVisible(); await expect(bar).toHaveAttribute('aria-label', /5 ימי עבודה · 12 ימים קלנדריים/);
+    if (width === 1440) await bar.hover(); else await bar.focus();
+    await expect(page.getByRole('tooltip')).toHaveText('משימת זמינות');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+
+    const taskRow = page.locator('.timeline-row').filter({ has: page.locator('[data-testid="task-bar-velocity-task-team-a"]') });
+    await expect(taskRow.locator('.absence-marker')).toHaveCount(5);
+    await expect(taskRow.locator('.absence-marker[data-date="2026-10-26"]')).toHaveAttribute('aria-label', /נועה · לא נמצא · 26.10.2026/);
+    await expect(taskRow.locator('.absence-marker[data-date="2026-10-27"]')).toHaveCount(0);
+    await expect(page.locator('.team-row .absence-marker')).toHaveCount(5);
+    await page.getByLabel('תצוגת Roadmap', { exact: true }).selectOption('people');
+    const noa = page.locator('.person-row').filter({ hasText: 'נועה' });
+    const dor = page.locator('.person-row').filter({ hasText: 'דור' });
+    await expect(noa.locator('.absence-marker')).toHaveCount(5);
+    await expect(dor.locator('.absence-marker')).toHaveCount(0);
+    await page.screenshot({ path: `/tmp/roadmap-absences-${width}.png`, fullPage: true });
+    await page.getByLabel('תצוגת Roadmap', { exact: true }).selectOption('work');
     await page.getByRole('button', { name: 'משימת זמינות מתוכננת', exact: true }).click(); await expect(page.locator('.editor-panel')).toContainText('5 ימי עבודה · 12 ימים קלנדריים');
     await page.screenshot({ path: `/tmp/velocity-roadmap-${width}.png`, fullPage: true });
     expect(errors).toEqual([]);

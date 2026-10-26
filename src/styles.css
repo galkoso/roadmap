@@ -252,3 +252,11 @@
   .velocity-grid button small{font-size:10px}
   .velocity-person-summary{padding:0;font-size:11px}
 }
+
+/* Velocity absences follow the same date coordinates as the task bars. */
+.absence-marker{position:absolute;top:2px;bottom:2px;z-index:3;pointer-events:none;background:repeating-linear-gradient(135deg,#ed9b6638 0 3px,#492f2766 3px 6px);border-inline:1px solid #efaa7899;color:#ffc3a0;text-align:center;overflow:hidden}
+.absence-marker>span{display:block;font-size:13px;font-weight:700;line-height:12px;text-shadow:0 1px 2px #131e2f}
+.legend .absence-key{display:inline-block;width:12px;height:12px;background:repeating-linear-gradient(135deg,#ed9b66 0 2px,#492f27 2px 4px);border:1px solid #efaa78;vertical-align:middle;margin-inline:8px 3px}
+.absence-marker:focus-visible{outline:2px solid #ffc3a0;outline-offset:-2px}
+
+.roadmap-task-tooltip{position:fixed;z-index:30;transform:translateY(-100%);max-width:min(280px,calc(100vw - 16px));padding:9px 12px;border:1px solid #6984aa;border-radius:7px;background:#20324b;color:#edf4ff;font-size:13px;line-height:1.5;overflow-wrap:anywhere;box-shadow:0 4px 16px #0006;pointer-events:none}

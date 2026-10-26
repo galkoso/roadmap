@@ -7,12 +7,13 @@ import { clone, isScheduled, RoadmapDocument, ScheduledTask, Team, WorkItem } fr
 import { addDays, daysBetween, formatDate, isWorkingDay, monthLabel, today } from '../core/dates';
 import { editTask, shiftTask, shiftWork, workRange } from '../core/scheduler';
 import { statuses } from '../core/model';
-interface Row { key: string; kind: 'team' | 'work' | 'person' | 'task'; personName?: string; initial?: string; count?: number; team: Team & { unassigned?: boolean }; independent?: boolean; work?: WorkItem; task?: ScheduledTask; start?: string; end?: string; shared?: boolean }
+interface Row { key: string; kind: 'team' | 'work' | 'person' | 'task'; memberId?: string; personName?: string; initial?: string; count?: number; team: Team & { unassigned?: boolean }; independent?: boolean; work?: WorkItem; task?: ScheduledTask; start?: string; end?: string; shared?: boolean }
+interface AbsenceMarker { date: string; label: string }
 interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' | 'start' | 'end'; base: RoadmapDocument; start: string; end: string; next: RoadmapDocument; moved: boolean }
 @Component({
   selector: 'app-timeline', standalone: true, imports: [AssigneeFieldComponent], changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="timeline-caption"><span>{{ periodLabel() }}</span><span class="legend"><i></i> משימה <b></b> סוף שבוע <span class="today-dot"></span> היום</span></div>
+    <div class="timeline-caption"><span>{{ periodLabel() }}</span><span class="legend"><i></i> משימה <b></b> סוף שבוע <span class="today-dot"></span> היום <span class="absence-key"></span> לא נמצא · Velocity</span></div>
     <div #viewport class="timeline-viewport" (scroll)="onScroll()" aria-label="ציר הזמן; תאריכים מתקדמים משמאל לימין" tabindex="0">
       <div class="timeline-canvas" [style.width.px]="width() + namesWidth()">
         <div class="timeline-header">
@@ -27,17 +28,22 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
           @if (todayX() >= 0 && todayX() <= width()) { <div class="today-line" [style.left.px]="todayX()"><span>היום</span></div> }
           @for (row of rows(); track row.key) {
             <div class="timeline-row" [class.team-row]="row.kind === 'team'" [class.work-row]="row.kind === 'work'" [class.person-row]="row.kind === 'person'" [class.unassigned-person]="row.kind === 'person' && !row.initial" [class.assignment-highlight]="row.task?.id === highlighted()" [class.selected]="row.task?.id === selected()">
-              <div class="lane" [style.width.px]="width()">
+              <div class="lane" [style.width.px]="width()" [title]="absenceLabels().get(row.key) ?? ''">
                 @if (row.start && row.end && intersects(row.start, row.end)) {
                   <button class="bar" [class.work-bar]="row.kind === 'work'" [class.task-bar]="row.kind === 'task'" [class.unresolved-schedule]="!!row.task?.scheduleIssue"
                     [style.left.px]="barLeft(row.start)" [style.width.px]="barWidth(row.start, row.end)"
                     [style.background]="row.task?.color ?? '#a9b4c5'" [attr.data-testid]="row.kind + '-bar-' + (row.task?.id ?? row.work?.id) + '-' + row.team.id"
-                    [attr.aria-label]="barLabel(row)" [title]="barLabel(row)" (pointerdown)="begin($event, row, row.kind === 'work' ? 'work' : 'move')"
+                    [attr.aria-label]="barLabel(row)" [title]="barLabel(row)" (mouseenter)="showTaskTooltip($event, row)" (mouseleave)="taskTooltip.set(null)"
+                    (focus)="showTaskTooltip($event, row)" (blur)="taskTooltip.set(null)" (pointerdown)="begin($event, row, row.kind === 'work' ? 'work' : 'move')"
                     (click)="barClick(row)">
                     @if (row.kind === 'task') { <span class="resize-handle start" aria-hidden="true" (pointerdown)="begin($event, row, 'start')"></span> }
                     @if (barWidth(row.start, row.end) > 150) { <span class="bar-dates">{{ row.task?.scheduleIssue ? '⚠ ' : '' }}{{ shortDate(row.start) }} – {{ shortDate(row.end) }}</span> }
                     @if (row.kind === 'task') { <span class="resize-handle end" aria-hidden="true" (pointerdown)="begin($event, row, 'end')"></span> }
                   </button>
+                }
+                @for (absence of rowAbsences().get(row.key) ?? []; track absence.date) {
+                  <span class="absence-marker" role="img" [attr.aria-label]="absence.label" [attr.data-date]="absence.date"
+                    [style.left.px]="x(absence.date)" [style.width.px]="store.preferences().dayWidth"><span aria-hidden="true">×</span></span>
                 }
               </div>
               <div class="row-name" dir="rtl" [style.width.px]="namesWidth()">
@@ -49,7 +55,8 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
                   <button class="hierarchy work-title" (click)="toggle(row.key)" [attr.aria-expanded]="!collapsed(row.key)"><span>{{ collapsed(row.key) ? '‹' : '⌄' }}</span><span class="name-text">{{ row.work!.title }}</span>@if (row.shared) { <span class="shared" title="עבודה משותפת">משותפת</span> }</button>
                   @if (!row.independent) { <div class="row-actions"><button class="row-action" [attr.aria-label]="'הוספת משימה תחת ' + row.work!.title" (click)="addTask.emit(row.work!.id)">＋</button><button class="row-action" [attr.aria-label]="row.work!.teamId === undefined ? 'עריכת עבודה' : 'עריכת כותרת'" (click)="editWork.emit(row.work!.id)">⋯</button><button class="row-action delete-action" [attr.aria-label]="'מחיקת עבודה ' + row.work!.title" title="מחיקת עבודה" (click)="deleteWork.emit(row.work!.id)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button></div> }
                 } @else {
-                  <button class="task-name" (click)="selectTask.emit(row.task!.id)"><i [style.background]="row.task!.color"></i><span class="name-text">{{ row.task!.title }}<small>{{ status[row.task!.status] }}@if (store.preferences().grouping === 'people') { · {{ row.work?.title ?? 'משימה עצמאית' }} }</small></span></button>
+                  <button class="task-name" (mouseenter)="showTaskTooltip($event, row)" (mouseleave)="taskTooltip.set(null)"
+                    (focus)="showTaskTooltip($event, row)" (blur)="taskTooltip.set(null)" (click)="selectTask.emit(row.task!.id)"><i [style.background]="row.task!.color"></i><span class="name-text">{{ row.task!.title }}<small>{{ status[row.task!.status] }}@if (store.preferences().grouping === 'people') { · {{ row.work?.title ?? 'משימה עצמאית' }} }</small></span></button>
                   <app-assignee-field [task]="row.task!" (changed)="store.assign(row.task!.id, $event)"/><div class="row-actions"><button class="row-action" [attr.aria-label]="'פעולות משימה ' + row.task!.title" [attr.popovertarget]="'task-menu-' + row.task!.id" (click)="positionTaskMenu($event)">⋯</button>
                     <div popover class="task-action-menu" [id]="'task-menu-' + row.task!.id" [style.top.px]="taskMenuPosition().top" [style.left.px]="taskMenuPosition().left">
                       <button (click)="taskMenuAction($event, row.task!.id, false)">עריכת משימה</button>
@@ -66,6 +73,9 @@ interface Drag { pointer: number; x: number; id: string; kind: 'work' | 'move' |
         </div>
       </div>
     </div>
+    @if (taskTooltip(); as tooltip) {
+      <div class="roadmap-task-tooltip" role="tooltip" dir="rtl" [style.left.px]="tooltip.left" [style.top.px]="tooltip.top">{{ tooltip.title }}</div>
+    }
     <div class="timeline-footer"><span>גללו ימינה ושמאלה להמשך התכנון · גררו פס להזזה · Escape לביטול</span><span>{{ rows().length }} שורות מוצגות</span></div>
   `
 })
@@ -76,6 +86,13 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   readonly moveToBacklog = output<string>(); readonly deleteTask = output<string>(); readonly deleteWork = output<string>();
   readonly addTask = output<string>(); readonly selectTask = output<string>(); readonly editWork = output<string>(); readonly editTeam = output<string>();
   @ViewChild('viewport') viewport!: ElementRef<HTMLDivElement>;
+  readonly taskTooltip = signal<{ title: string; left: number; top: number } | null>(null);
+  showTaskTooltip(event: Event, row: Row): void {
+    const title = row.task?.title ?? row.work?.title;
+    if (!title || this.drag) return;
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    this.taskTooltip.set({ title, left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: Math.max(8, rect.top - 8) });
+  }
   readonly taskMenuPosition = signal({ top: 0, left: 0 });
   positionTaskMenu(event: MouseEvent): void {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -114,7 +131,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
         };
         if (group.teamId === null) addTasks(group.tasks);
         else for (const person of group.groups) {
-          result.push({ key: person.key, kind: 'person', team, personName: person.name, initial: person.member?.name.slice(0, 1), count: person.tasks.length });
+          result.push({ key: person.key, kind: 'person', team, memberId: person.member?.id, personName: person.name, initial: person.member?.name.slice(0, 1), count: person.tasks.length });
           if (!collapsed.has(person.key)) addTasks(person.tasks);
         }
       }
@@ -146,6 +163,27 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
     }
     return result;
   });
+  readonly rowAbsences = computed(() => {
+    const doc = this.store.visible(), end = addDays(this.start(), this.span());
+    const members = new Map(doc.members.map(member => [member.id, member]));
+    const absences = (doc.attendance ?? []).filter(entry => entry.status === 'absent' && isWorkingDay(entry.date) &&
+      entry.date >= this.start() && entry.date < end && members.has(entry.memberId));
+    const result = new Map<string, AbsenceMarker[]>();
+    for (const row of this.rows()) {
+      const memberId = row.kind === 'person' ? row.memberId : row.task?.assigneeId;
+      const dates = new Map<string, string[]>();
+      for (const entry of absences) {
+        const member = members.get(entry.memberId)!;
+        if (row.kind === 'team' ? member.teamId !== row.team.id : !memberId || entry.memberId !== memberId) continue;
+        dates.set(entry.date, [...(dates.get(entry.date) ?? []), member.name]);
+      }
+      result.set(row.key, [...dates].sort(([a], [b]) => a.localeCompare(b)).map(([date, names]) => ({
+        date, label: `${names.join(', ')} · לא נמצא · ${formatDate(date)}`
+      })));
+    }
+    return result;
+  });
+  readonly absenceLabels = computed(() => new Map([...this.rowAbsences()].map(([key, markers]) => [key, markers.map(marker => marker.label).join('\n')])));
   readonly months = computed(() => {
     const result: { start: string; label: string; width: number }[] = [];
     let date = this.start(), end = addDays(date, this.span());
@@ -226,6 +264,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
     this.store.setPreferences({ center, timelineAnchor: this.windowCenter(), scrollLeft: el.scrollLeft, scrollTop: el.scrollTop });
   }
   onScroll(): void {
+    this.taskTooltip.set(null);
     if (this.positioning || this.drag || this.destroyed) return;
     const el = this.viewport.nativeElement, left = el.scrollLeft;
     const chartWidth = Math.max(0, el.clientWidth - this.namesWidth()), max = this.width() - chartWidth;
@@ -293,6 +332,7 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
   goTo(date: string): void { this.store.setPreferences({ center: date, scrollLeft: undefined, timelineAnchor: undefined, scrollTop: 0 }); this.recenter(); }
   barClick(row: Row): void { if (this.suppressClick) { this.suppressClick = false; return; } if (row.task) this.selectTask.emit(row.task.id); else this.editWork.emit(row.work!.id); }
   begin(event: PointerEvent, row: Row, kind: Drag['kind']): void {
+    this.taskTooltip.set(null);
     if (event.button !== 0 || (!this.store.loaded() || this.store.importing())) return; event.preventDefault(); event.stopPropagation();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     const base = clone(this.store.document());
@@ -325,5 +365,5 @@ export class TimelineComponent implements AfterViewInit, OnDestroy {
     if (drag.moved) this.store.commit(drag.next, this.store.notice()); else this.store.preview.set(null);
   }
   @HostListener('document:pointercancel') cancel(): void { if (this.drag) { this.drag = null; this.store.preview.set(null); this.store.notice.set('הגרירה בוטלה'); this.suppressClick = true; } }
-  @HostListener('document:keydown.escape') escape(): void { this.cancel(); }
+  @HostListener('document:keydown.escape') escape(): void { this.taskTooltip.set(null); this.cancel(); }
 }
